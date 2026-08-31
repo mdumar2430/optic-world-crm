@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+  }
+
+  /* Consistent focus treatment across every interactive element. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500/50;
+  }
+
+  /* Date inputs default to a cramped height in Safari/iOS. */
+  input[type='date'] {
+    min-height: 2.5rem;
+  }
+}
+
+@layer utilities {
+  /* Respects the iOS home indicator on the mobile bottom navigation. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

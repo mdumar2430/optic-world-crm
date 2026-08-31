@@ -1,0 +1,222 @@
+rules_version = '2';
+
+/**
+ * Optic World — Firestore Security Rules
+ *
+ * These rules are the authoritative permission boundary. The React app hides
+ * controls a user may not act on, but that is a usability affordance only:
+ * every rule below is enforced here, independently of the client.
+ *
+ * Authorisation comes from the `role` custom claim on the ID token, which is
+ * set only by the Admin SDK inside a Cloud Function. A deactivated employee is
+ * disabled in Firebase Auth and has their refresh tokens revoked, so they can
+ * no longer obtain a token at all — which is why these rules do not need a
+ * per-request `get()` on the user profile.
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ---------------------------------------------------------------- */
+    /* Identity helpers                                                  */
+    /* ---------------------------------------------------------------- */
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return request.auth.token.get('role', '');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && role() == 'admin';
+    }
+
+    function isStaff() {
+      return isSignedIn() && (role() == 'admin' || role() == 'employee');
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Field helpers                                                     */
+    /* ---------------------------------------------------------------- */
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    /** Fields that must never change after creation. */
+    function unchanged(fields) {
+      return incoming().diff(existing()).unchangedKeys().hasAll(fields);
+    }
+
+    function isValidString(value, maxLength) {
+      return value is string && value.size() <= maxLength;
+    }
+
+    /** Audit stamps must name the caller and use the server clock. */
+    function hasCreateAudit() {
+      return incoming().createdBy == uid()
+        && incoming().updatedBy == uid()
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+    }
+
+    function hasUpdateAudit() {
+      return incoming().updatedBy == uid()
+        && incoming().updatedAt == request.time;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* users — profiles are written only by the Admin SDK                */
+    /* ---------------------------------------------------------------- */
+
+    match /users/{userId} {
+      // A user can read their own profile; an admin can read the directory.
+      allow get: if isSignedIn() && (userId == uid() || isAdmin());
+      allow list: if isAdmin();
+
+      // Employee creation, role changes and deactivation all go through
+      // callable Cloud Functions, which bypass these rules with the Admin SDK.
+      // No client may write a profile — that would be a privilege-escalation
+      // path, since the profile mirrors the role.
+      allow create, update, delete: if false;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* counters — monotonic sources for customer/visit/order/service ids */
+    /* ---------------------------------------------------------------- */
+
+    match /counters/{counterId} {
+      allow read: if isStaff();
+
+      // A counter may only ever move forward by one, inside a transaction.
+      // This is what makes concurrently generated customer codes unique and
+      // guarantees a code is never reused.
+      allow create: if isStaff()
+        && incoming().value == 1;
+
+      allow update: if isStaff()
+        && incoming().value == existing().value + 1;
+
+      allow delete: if false;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* customers                                                         */
+    /* ---------------------------------------------------------------- */
+
+    function customerHasRequiredShape() {
+      return isValidString(incoming().name, 120)
+        && incoming().name.size() > 0
+        && isValidString(incoming().nameLower, 120)
+        && incoming().nameLower == incoming().name.lower()
+        && incoming().phone is string
+        && incoming().phone.matches('^[0-9]{10}$')
+        && isValidString(incoming().alternatePhone, 15)
+        && isValidString(incoming().customerCode, 20)
+        && (incoming().customerType == 'primary' || incoming().customerType == 'family_member')
+        && (incoming().primaryCustomerId == null || isValidString(incoming().primaryCustomerId, 20))
+        && (incoming().age == null || (incoming().age is int && incoming().age >= 0 && incoming().age <= 130))
+        && isValidString(incoming().notes, 2000)
+        && incoming().isActive is bool;
+    }
+
+    /**
+     * A family member must point at a primary customer, and a primary customer
+     * must not point at anyone. This keeps the relationship graph one level
+     * deep, as the data model assumes.
+     */
+    function relationshipIsCoherent() {
+      return (incoming().customerType == 'family_member'
+                && incoming().primaryCustomerId != null
+                && incoming().primaryCustomerId != incoming().customerCode)
+          || (incoming().customerType == 'primary'
+                && incoming().primaryCustomerId == null);
+    }
+
+    match /customers/{customerId} {
+      // Employees see active customers only. An inactive document fails this
+      // rule, so it is excluded from their reads and from their list queries.
+      allow get: if isStaff() && (isAdmin() || existing().isActive == true);
+      allow list: if isStaff() && (isAdmin() || existing().isActive == true);
+
+      allow create: if isStaff()
+        && hasCreateAudit()
+        && customerHasRequiredShape()
+        && relationshipIsCoherent()
+        // The document id is the customer code, and a new record starts active.
+        // A customer is created together with its initial visit, so the count
+        // is 0 or 1 — never a value the client invented.
+        && incoming().customerCode == customerId
+        && incoming().isActive == true
+        && incoming().visitCount is int
+        && incoming().visitCount >= 0
+        && incoming().visitCount <= 1;
+
+      allow update: if isStaff()
+        && hasUpdateAudit()
+        && customerHasRequiredShape()
+        && relationshipIsCoherent()
+        // Identity and creation history are immutable, so a code is never
+        // reassigned and authorship cannot be rewritten.
+        && unchanged(['customerCode', 'createdAt', 'createdBy'])
+        // Soft delete and restore are admin-only.
+        && (isAdmin() || incoming().isActive == existing().isActive);
+
+      // Customers are never hard-deleted: history must survive. Deactivation
+      // sets isActive to false instead.
+      allow delete: if false;
+
+      /* -------------------------------------------------------------- */
+      /* visits — one document per interaction, holding that visit's     */
+      /* prescription, orders and services                               */
+      /* -------------------------------------------------------------- */
+
+      match /visits/{visitId} {
+
+        function visitHasRequiredShape() {
+          return incoming().visitDate is timestamp
+            && incoming().visitType in
+                 ['consultation', 'prescription', 'order', 'service', 'follow_up', 'other']
+            && isValidString(incoming().visitCode, 20)
+            && incoming().orders is list
+            && incoming().orders.size() <= 20
+            && incoming().services is list
+            && incoming().services.size() <= 20
+            && isValidString(incoming().notes, 4000);
+        }
+
+        allow get, list: if isStaff();
+
+        allow create: if isStaff()
+          && hasCreateAudit()
+          && visitHasRequiredShape()
+          && incoming().visitCode == visitId;
+
+        allow update: if isStaff()
+          && hasUpdateAudit()
+          && visitHasRequiredShape()
+          && unchanged(['visitCode', 'createdAt', 'createdBy']);
+
+        // Visit history is permanent.
+        allow delete: if false;
+      }
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Anything not matched above is denied.                             */
+    /* ---------------------------------------------------------------- */
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
