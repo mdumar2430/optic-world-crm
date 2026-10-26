@@ -1,15 +1,14 @@
 /**
  * Firebase implementation of the data contract.
  *
- * Reads and ordinary writes go straight to Firestore, guarded by Security
- * Rules. Anything privileged — creating an employee, changing a role,
- * disabling an account — goes through a callable Cloud Function that re-checks
- * the caller's claims with the Admin SDK.
+ * Everything goes straight to Firestore and Firebase Auth, guarded by Security
+ * Rules. The project runs on the free Spark plan without Cloud Functions, so
+ * a user's role and active state live in their `users/{uid}` profile, which
+ * only an admin may write.
  */
-// Note: `createUserWithEmailAndPassword` is deliberately never imported here.
-// Creating a user from the client signs the current admin out, so employee
-// creation goes through the `createEmployee` callable instead.
 import {
+  createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged as onFirebaseAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -29,14 +28,15 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   startAfter,
   Timestamp,
+  updateDoc,
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Transaction,
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
 
 import type {
   AuthUser,
@@ -48,7 +48,7 @@ import type {
 } from '@/types';
 import { AppError } from '@/types';
 import { canTransitionOrder, canTransitionService } from '@/constants/workflow';
-import { getDb, getFirebaseAuth, getFns, paths } from '@/lib/firebase';
+import { getDb, getFirebaseAuth, paths, withSecondaryAuth } from '@/lib/firebase';
 import type {
   AuthAdapter,
   CustomerInput,
@@ -92,27 +92,26 @@ function toAppError(error: unknown, fallback: string): AppError {
     case 'auth/invalid-email':
       return new AppError('unauthenticated', 'Incorrect email or password.');
     case 'auth/user-disabled':
-    case 'functions/failed-precondition':
       return new AppError(
         'account-disabled',
         'This account has been deactivated. Contact your administrator.',
       );
     case 'auth/too-many-requests':
       return new AppError('unknown', 'Too many attempts. Please wait a moment and try again.');
+    case 'auth/email-already-in-use':
+      return new AppError('already-exists', 'An account with this email already exists.');
+    case 'auth/weak-password':
+    case 'auth/password-does-not-meet-requirements':
+      return new AppError('invalid-argument', 'That password is too weak.');
     case 'permission-denied':
-    case 'functions/permission-denied':
       return new AppError('permission-denied', 'You do not have permission to do that.');
     case 'not-found':
-    case 'functions/not-found':
       return new AppError('not-found', 'That record no longer exists.');
     case 'already-exists':
-    case 'functions/already-exists':
       return new AppError('already-exists', coded.message ?? 'That record already exists.');
     case 'invalid-argument':
-    case 'functions/invalid-argument':
       return new AppError('invalid-argument', coded.message ?? 'Some details were not valid.');
     case 'unauthenticated':
-    case 'functions/unauthenticated':
       return new AppError('unauthenticated', 'Your session has expired. Please sign in again.');
     default:
       return new AppError('unknown', fallback);
@@ -132,27 +131,24 @@ async function guard<T>(fallback: string, work: () => Promise<T>): Promise<T> {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Builds the principal from the ID token's custom claims. The Firestore profile
- * supplies display data only; the claim is the authority on `role`.
+ * Builds the principal from the user's Firestore profile, which is the
+ * authority on `role` — the same document the Security Rules read.
+ *
+ * No profile means no access: that is an Auth account an admin never set up
+ * (or one someone registered themselves). An inactive profile also ends the
+ * session; the rules reject its reads and writes regardless.
  */
 async function toAuthUser(user: User): Promise<AuthUser | null> {
-  const token = await user.getIdTokenResult();
-  const claimRole = token.claims.role;
-  const role = claimRole === 'admin' ? 'admin' : 'employee';
-
   const profileSnap = await getDoc(doc(getDb(), paths.user(user.uid)));
-  const profile = profileSnap.exists()
-    ? userFromDoc(profileSnap as QueryDocumentSnapshot<DocumentData>)
-    : null;
-
-  // A profile marked inactive ends the session; rules reject its writes anyway.
-  if (profile && !profile.isActive) return null;
+  if (!profileSnap.exists()) return null;
+  const profile = userFromDoc(profileSnap as QueryDocumentSnapshot<DocumentData>);
+  if (!profile.isActive) return null;
 
   return {
     uid: user.uid,
-    email: user.email ?? profile?.email ?? '',
-    fullName: profile?.fullName ?? user.displayName ?? user.email ?? 'User',
-    role,
+    email: user.email ?? profile.email,
+    fullName: profile.fullName || user.displayName || user.email || 'User',
+    role: profile.role,
     isActive: true,
   };
 }
@@ -184,14 +180,12 @@ const auth: AuthAdapter = {
         email.trim(),
         password,
       );
-      // Force a token refresh so a claim set moments ago is picked up.
-      await credential.user.getIdToken(true);
       const principal = await toAuthUser(credential.user);
       if (!principal) {
         await firebaseSignOut(getFirebaseAuth());
         throw new AppError(
           'account-disabled',
-          'This account has been deactivated. Contact your administrator.',
+          'This account is deactivated or has not been set up. Contact your administrator.',
         );
       }
       return principal;
@@ -875,27 +869,23 @@ const visits: VisitsAdapter = {
 };
 
 /* -------------------------------------------------------------------------- */
-/* Employees — every mutation is a callable Cloud Function                    */
+/* Employees — profile writes are admin-only in the Security Rules            */
 /* -------------------------------------------------------------------------- */
 
-interface CallableUserProfile {
-  id: string;
-  fullName: string;
-  email: string;
-  role: 'admin' | 'employee';
-  isActive: boolean;
-  createdAt: string;
-  createdBy: string | null;
-  updatedAt: string;
-  updatedBy: string | null;
+async function readUserProfile(userId: string): Promise<UserProfile> {
+  const snapshot = await getDoc(doc(getDb(), paths.user(userId)));
+  if (!snapshot.exists()) throw new AppError('not-found', 'Employee profile not found.');
+  return userFromDoc(snapshot as QueryDocumentSnapshot<DocumentData>);
 }
 
-function fromCallable(payload: CallableUserProfile): UserProfile {
-  return {
-    ...payload,
-    createdAt: new Date(payload.createdAt),
-    updatedAt: new Date(payload.updatedAt),
-  };
+async function updateUserProfile(userId: string, fields: DocumentData): Promise<UserProfile> {
+  const uid = requireUid();
+  await updateDoc(doc(getDb(), paths.user(userId)), {
+    ...fields,
+    updatedAt: serverTimestamp(),
+    updatedBy: uid,
+  });
+  return readUserProfile(userId);
 }
 
 const employees: EmployeesAdapter = {
@@ -918,34 +908,59 @@ const employees: EmployeesAdapter = {
 
   async create(input) {
     return guard('Unable to create this employee.', async () => {
-      const callable = httpsCallable<typeof input, CallableUserProfile>(
-        getFns(),
-        'createEmployee',
-      );
-      const response = await callable(input);
-      return fromCallable(response.data);
+      const callerUid = requireUid();
+      const fullName = input.fullName.trim();
+      const email = input.email.trim().toLowerCase();
+
+      // The new account is created and signed in on a throwaway Auth instance,
+      // so the admin stays signed in here.
+      return withSecondaryAuth(async (secondaryAuth) => {
+        const credential = await createUserWithEmailAndPassword(
+          secondaryAuth,
+          email,
+          input.password,
+        );
+        const newUid = credential.user.uid;
+
+        try {
+          await setDoc(doc(getDb(), paths.user(newUid)), {
+            fullName,
+            email,
+            role: input.role,
+            isActive: true,
+            createdAt: serverTimestamp(),
+            createdBy: callerUid,
+            updatedAt: serverTimestamp(),
+            updatedBy: callerUid,
+          });
+        } catch (error) {
+          // Roll back so the email is not left taken by an account with no
+          // profile. The new user is still signed in on the throwaway instance,
+          // which is what allows it to delete itself.
+          await deleteUser(credential.user).catch(() => undefined);
+          throw error;
+        }
+
+        return readUserProfile(newUid);
+      });
     });
   },
 
   async setActive(userId, isActive) {
     return guard('Unable to update this employee.', async () => {
-      const callable = httpsCallable<{ userId: string; isActive: boolean }, CallableUserProfile>(
-        getFns(),
-        'setEmployeeActive',
-      );
-      const response = await callable({ userId, isActive });
-      return fromCallable(response.data);
+      if (userId === requireUid() && !isActive) {
+        throw new AppError('invalid-argument', 'You cannot deactivate your own account.');
+      }
+      return updateUserProfile(userId, { isActive });
     });
   },
 
   async setRole(userId, role) {
     return guard('Unable to update this role.', async () => {
-      const callable = httpsCallable<
-        { userId: string; role: 'admin' | 'employee' },
-        CallableUserProfile
-      >(getFns(), 'setEmployeeRole');
-      const response = await callable({ userId, role });
-      return fromCallable(response.data);
+      if (userId === requireUid() && role !== 'admin') {
+        throw new AppError('invalid-argument', 'You cannot remove your own admin access.');
+      }
+      return updateUserProfile(userId, { role });
     });
   },
 };

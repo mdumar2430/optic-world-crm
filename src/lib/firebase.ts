@@ -6,13 +6,12 @@
  * than a cryptic SDK error at module-load time.
  *
  * The values below are the Firebase *web* config. They are identifiers, not
- * secrets — access is enforced by Security Rules and Cloud Functions. Service
- * account credentials must never appear in this app.
+ * secrets — access is enforced by Security Rules. Service account credentials
+ * must never appear in this app.
  */
-import { initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
-import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
+import { deleteApp, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
+import { connectAuthEmulator, getAuth, inMemoryPersistence, setPersistence, type Auth } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
-import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase/functions';
 
 const env = import.meta.env;
 
@@ -25,13 +24,12 @@ const firebaseConfig: FirebaseOptions = {
   appId: env.VITE_FIREBASE_APP_ID,
 };
 
-const FUNCTIONS_REGION = env.VITE_FIREBASE_FUNCTIONS_REGION || 'us-central1';
 const USE_EMULATORS = env.VITE_USE_FIREBASE_EMULATORS === 'true';
 
 let app: FirebaseApp | null = null;
 let authInstance: Auth | null = null;
 let firestoreInstance: Firestore | null = null;
-let functionsInstance: Functions | null = null;
+let secondarySeq = 0;
 
 export function isFirebaseConfigured(): boolean {
   return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
@@ -65,11 +63,28 @@ export function getDb(): Firestore {
   return firestoreInstance;
 }
 
-export function getFns(): Functions {
-  if (functionsInstance) return functionsInstance;
-  functionsInstance = getFunctions(getApp(), FUNCTIONS_REGION);
-  if (USE_EMULATORS) connectFunctionsEmulator(functionsInstance, '127.0.0.1', 5001);
-  return functionsInstance;
+/**
+ * Runs `work` against a throwaway Auth instance on a separate Firebase app.
+ *
+ * Creating an account with `createUserWithEmailAndPassword` signs that account
+ * in on whichever Auth instance made it. Doing it here, with in-memory
+ * persistence, leaves the admin's own session untouched. The app is deleted
+ * afterwards, whether or not `work` succeeds.
+ */
+export async function withSecondaryAuth<T>(work: (auth: Auth) => Promise<T>): Promise<T> {
+  getApp(); // Surfaces the "not configured" error before anything else.
+  secondarySeq += 1;
+  const secondary = initializeApp(firebaseConfig, `secondary-${secondarySeq}`);
+  try {
+    const secondaryAuth = getAuth(secondary);
+    await setPersistence(secondaryAuth, inMemoryPersistence);
+    if (USE_EMULATORS) {
+      connectAuthEmulator(secondaryAuth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    }
+    return await work(secondaryAuth);
+  } finally {
+    await deleteApp(secondary).catch(() => undefined);
+  }
 }
 
 /** Collection and document paths, in one place so they never drift. */

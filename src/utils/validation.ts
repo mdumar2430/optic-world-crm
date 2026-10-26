@@ -2,8 +2,8 @@
  * Client-side validation.
  *
  * This exists for fast feedback only. Every constraint that matters is also
- * enforced by Firestore Security Rules or by a Cloud Function, because a
- * modified client can skip all of this.
+ * enforced by Firestore Security Rules or Firebase Auth, because a modified
+ * client can skip all of this.
  */
 
 export type FieldErrors<T> = Partial<Record<keyof T, string>>;

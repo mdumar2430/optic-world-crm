@@ -347,8 +347,7 @@ export function EmployeesPage() {
           {dataSource === 'mock' && (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
               In demo mode the account is stored in this browser only. With Firebase connected,
-              this calls the <code>createEmployee</code> Cloud Function, which verifies your admin
-              claim before creating the account.
+              this creates a Firebase login and a profile that only an admin is allowed to write.
             </p>
           )}
 

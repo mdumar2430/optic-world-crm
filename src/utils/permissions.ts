@@ -2,8 +2,8 @@
  * Capability checks used to hide UI a user may not act on.
  *
  * These are a usability affordance only. The authoritative copy of every rule
- * below lives in `firestore.rules` and in the callable Cloud Functions; a user
- * who edits the bundle still gets rejected by the backend.
+ * below lives in `firestore.rules`; a user who edits the bundle still gets
+ * rejected by the backend.
  */
 import type { AuthUser } from '@/types';
 

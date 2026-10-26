@@ -6,7 +6,8 @@ that has ever happened with them, and record new visits, prescriptions, orders
 and repairs.
 
 React · TypeScript · Tailwind CSS · React Router · Firebase Auth · Cloud
-Firestore · Cloud Functions · Firebase Hosting.
+Firestore · Firebase Hosting. Runs on Firebase's free Spark plan — no Cloud
+Functions and no billing account needed.
 
 ---
 
@@ -82,19 +83,37 @@ The Firebase adapter is complete; it just needs a project.
    These values are identifiers, not secrets — access is enforced by Security
    Rules. A service account key must never appear in this app.
 
-3. **Deploy the rules, indexes and functions.**
+3. **Deploy the rules and indexes.**
 
    ```bash
-   npm install --prefix functions
-   firebase deploy --only firestore:rules,firestore:indexes,functions
+   firebase deploy --only firestore:rules,firestore:indexes
    ```
 
-4. **Create the first admin.** Add one user in the Firebase console
-   (Authentication → Add user), sign in to the app, and call the
-   `bootstrapFirstAdmin` callable once. It promotes the caller to admin **only
-   while no admin exists**, so it cannot be used to escalate later. Sign out and
-   back in to pick up the claim. From then on, every account is created from
-   the Employees screen.
+4. **Create the first admin** by hand in the Firebase console — the console is
+   not subject to Security Rules, which is what lets it create the one profile
+   no one else can:
+
+   1. *Authentication → Users → Add user.* Copy the new user's **User UID**.
+   2. *Firestore → Start collection* `users`, with that UID as the document ID
+      and these fields:
+
+      | Field       | Type      | Value               |
+      | ----------- | --------- | ------------------- |
+      | `fullName`  | string    | the admin's name    |
+      | `email`     | string    | the same email      |
+      | `role`      | string    | `admin`             |
+      | `isActive`  | boolean   | `true`              |
+      | `createdAt` | timestamp | now                 |
+      | `updatedAt` | timestamp | now                 |
+      | `createdBy` | null      |                     |
+      | `updatedBy` | null      |                     |
+
+   Sign in to the app with that account. From then on, every account is created
+   from the Employees screen.
+
+   Optionally, set a password policy under *Authentication → Settings → Password
+   policy* (8+ characters, a letter and a number) so Firebase enforces the same
+   rule the Employees form checks.
 
 5. **Deploy the app.**
 
@@ -106,7 +125,7 @@ The Firebase adapter is complete; it just needs a project.
 ### Local emulators
 
 Set `VITE_USE_FIREBASE_EMULATORS=true` and run `firebase emulators:start`. The
-app connects to Auth on 9099, Firestore on 8080 and Functions on 5001.
+app connects to Auth on 9099 and Firestore on 8080.
 
 ---
 
@@ -115,21 +134,25 @@ app connects to Auth on 9099, Firestore on 8080 and Functions on 5001.
 Frontend role checks only decide what to *show*. Every boundary is enforced
 again on the server, so an employee who edits the bundle still gets rejected.
 
-**Authorisation comes from a custom claim.** `role` is set on the ID token by
-the Admin SDK inside a Cloud Function and is never writable from the client. The
-Firestore `users/{uid}` profile mirrors it for display only, and no client may
-write to `users` at all — that would be a privilege-escalation path.
+**Authorisation comes from the user's profile.** `role` and `isActive` live on
+`users/{uid}`, and `firestore.rules` reads the caller's profile on every request
+(one cached read per request). Only an active admin may create or change a
+profile, nobody may create their own, and an admin cannot demote or deactivate
+themselves. A signed-in account with no profile — such as one someone
+registered themselves using the public web config — can read nothing.
 
-**Privileged operations are callables.** `createEmployee`, `setEmployeeActive`
-and `setEmployeeRole` each re-verify that the caller is authenticated, holds the
-`admin` claim, and is not themselves disabled. Employee creation lives on the
-server for a second reason: `createUserWithEmailAndPassword` in the browser
-signs the *current* user out, so an admin would be logged out on every save.
+**Employees are created in the browser without logging the admin out.**
+`createUserWithEmailAndPassword` signs the new account in on whichever Auth
+instance made it, so the app creates it on a throwaway secondary Firebase app
+(`withSecondaryAuth` in `src/lib/firebase.ts`) with in-memory persistence, then
+writes the profile as the admin. If the profile write fails, the new account
+deletes itself.
 
-**Deactivation revokes access immediately.** The Auth user is disabled and their
-refresh tokens revoked, so an existing session dies rather than lasting until
-the token expires. Because a deactivated user can no longer get a token,
-`firestore.rules` does not need a per-request `get()` on their profile.
+**Deactivation takes effect on the next request.** Setting `isActive` to `false`
+makes every rule reject that user, and the app signs them out. Their Auth
+account is not disabled — that needs the Admin SDK, i.e. a Cloud Function on
+the paid Blaze plan — so they can still complete a sign-in, but the app then
+signs them straight back out and the database gives them nothing.
 
 **Firestore rules** (`firestore.rules`) enforce that:
 
@@ -151,7 +174,8 @@ service layer and constrained by the UI (only reachable statuses are offered),
 but not re-checked inside `firestore.rules`, because the statuses live in arrays
 inside the visit document and rules cannot iterate them. Rules do enforce *who*
 may write a visit and the document's overall shape. If transition legality needs
-server enforcement later, the clean fix is a callable for status changes.
+server enforcement later, the clean fix is a callable Cloud Function for status
+changes, which would need the Blaze plan.
 
 ---
 
@@ -166,7 +190,7 @@ React app
     └── services/                 the only layer that talks to a backend
          ├── contracts.ts         the data-access interface
          ├── mock/                seeded in-browser dataset
-         └── firebase/            Auth, Firestore, callable functions
+         └── firebase/            Auth, Firestore
 ```
 
 `services/index.ts` picks one implementation at module load based on
@@ -184,7 +208,7 @@ Dates are `Date` objects everywhere in the app. Conversion to and from Firestore
 ### Data model
 
 ```
-users/{uid}                              profile; role mirrors the custom claim
+users/{uid}                              profile; the authority on role and isActive
 counters/{customer|visit|order|service}   monotonic code sources
 customers/{CUST-000001}                   one document per customer
 customers/{CUST-000001}/visits/{VISIT-000001}

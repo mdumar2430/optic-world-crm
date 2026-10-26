@@ -7,11 +7,13 @@ rules_version = '2';
  * controls a user may not act on, but that is a usability affordance only:
  * every rule below is enforced here, independently of the client.
  *
- * Authorisation comes from the `role` custom claim on the ID token, which is
- * set only by the Admin SDK inside a Cloud Function. A deactivated employee is
- * disabled in Firebase Auth and has their refresh tokens revoked, so they can
- * no longer obtain a token at all — which is why these rules do not need a
- * per-request `get()` on the user profile.
+ * Authorisation comes from the caller's own profile at `users/{uid}`: its
+ * `role` and `isActive` fields are read on every request. The project runs on
+ * the free Spark plan with no Cloud Functions, so the profile — which only an
+ * admin may write — is the single source of truth. A signed-in account with no
+ * profile (for example, someone who signed themselves up with the public web
+ * config) has no access at all, and deactivation or a role change takes effect
+ * on the very next request.
  */
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -24,16 +26,25 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function role() {
-      return request.auth.token.get('role', '');
+    /**
+     * The caller's profile. Rules cache repeated `get()`s of the same document
+     * within one request, so this costs a single read however often it is used.
+     * A missing profile makes the `get()` fail, which denies the request.
+     */
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     function isAdmin() {
-      return isSignedIn() && role() == 'admin';
+      return isSignedIn()
+        && myProfile().isActive == true
+        && myProfile().role == 'admin';
     }
 
     function isStaff() {
-      return isSignedIn() && (role() == 'admin' || role() == 'employee');
+      return isSignedIn()
+        && myProfile().isActive == true
+        && myProfile().role in ['admin', 'employee'];
     }
 
     function uid() {
@@ -75,19 +86,47 @@ service cloud.firestore {
     }
 
     /* ---------------------------------------------------------------- */
-    /* users — profiles are written only by the Admin SDK                */
+    /* users — the profile is the role, so only an admin may write it   */
     /* ---------------------------------------------------------------- */
+
+    function profileHasRequiredShape() {
+      return isValidString(incoming().fullName, 120)
+        && incoming().fullName.size() > 0
+        && incoming().role in ['admin', 'employee']
+        && incoming().isActive is bool;
+    }
 
     match /users/{userId} {
       // A user can read their own profile; an admin can read the directory.
       allow get: if isSignedIn() && (userId == uid() || isAdmin());
       allow list: if isAdmin();
 
-      // Employee creation, role changes and deactivation all go through
-      // callable Cloud Functions, which bypass these rules with the Admin SDK.
-      // No client may write a profile — that would be a privilege-escalation
-      // path, since the profile mirrors the role.
-      allow create, update, delete: if false;
+      // An admin creates the profile right after creating the Auth account.
+      // Nobody can create their own profile, so a self-registered account can
+      // never grant itself a role. The very first admin is created by hand in
+      // the Firebase console, which is not subject to these rules.
+      allow create: if isAdmin()
+        && userId != uid()
+        && hasCreateAudit()
+        && profileHasRequiredShape()
+        && isValidString(incoming().email, 200)
+        && incoming().isActive == true
+        && incoming().keys().hasOnly(
+             ['fullName', 'email', 'role', 'isActive',
+              'createdAt', 'createdBy', 'updatedAt', 'updatedBy']);
+
+      // Only the name, role and active flag may change. An admin may not
+      // demote or deactivate themselves, so the store always keeps an admin.
+      allow update: if isAdmin()
+        && hasUpdateAudit()
+        && profileHasRequiredShape()
+        && incoming().diff(existing()).affectedKeys()
+             .hasOnly(['fullName', 'role', 'isActive', 'updatedAt', 'updatedBy'])
+        && (userId != uid()
+              || (incoming().role == 'admin' && incoming().isActive == true));
+
+      // Profiles are never deleted: records keep their author's name.
+      allow delete: if false;
     }
 
     /* ---------------------------------------------------------------- */
@@ -209,6 +248,17 @@ service cloud.firestore {
         // Visit history is permanent.
         allow delete: if false;
       }
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* visits across all customers — the dashboard's collection-group    */
+    /* queries. Rules nested under /customers do not cover these, so     */
+    /* they need their own match. Read-only, with the same check as the  */
+    /* nested `allow get, list`; writes still go through the rules above.*/
+    /* ---------------------------------------------------------------- */
+
+    match /{path=**}/visits/{visitId} {
+      allow get, list: if isStaff();
     }
 
     /* ---------------------------------------------------------------- */

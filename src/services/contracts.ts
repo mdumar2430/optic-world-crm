@@ -171,7 +171,7 @@ export interface CreateEmployeeInput {
 export interface EmployeesAdapter {
   list(): Promise<UserProfile[]>;
   getById(userId: string): Promise<UserProfile | null>;
-  /** Backed by a callable Cloud Function; never creates the user client-side. */
+  /** Creates the Auth account and its profile without signing the admin out. */
   create(input: CreateEmployeeInput): Promise<UserProfile>;
   setActive(userId: string, isActive: boolean): Promise<UserProfile>;
   setRole(userId: string, role: UserRole): Promise<UserProfile>;
