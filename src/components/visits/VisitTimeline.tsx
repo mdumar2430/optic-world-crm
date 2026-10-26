@@ -127,12 +127,35 @@ export function VisitTimeline({ customerId, visits, onVisitUpdated }: VisitTimel
 
             {!isCollapsed && (
               <div id={`visit-body-${visit.id}`} className="space-y-5 px-4 py-4 sm:px-5">
-                {visit.prescription && (
+                {visit.existingPrescription && (
                   <section>
                     <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Prescription
+                      Existing prescription
                     </h4>
-                    <PrescriptionView prescription={visit.prescription} />
+                    <PrescriptionView prescription={visit.existingPrescription} />
+                  </section>
+                )}
+
+                {visit.prescription && (
+                  <section>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        New prescription
+                      </h4>
+                      {visit.existingPrescription && (
+                        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <span
+                            className="h-3 w-3 rounded-sm bg-amber-50 ring-1 ring-inset ring-amber-200"
+                            aria-hidden="true"
+                          />
+                          Changed from existing
+                        </span>
+                      )}
+                    </div>
+                    <PrescriptionView
+                      prescription={visit.prescription}
+                      compareWith={visit.existingPrescription}
+                    />
                   </section>
                 )}
 
@@ -188,6 +211,7 @@ export function VisitTimeline({ customerId, visits, onVisitUpdated }: VisitTimel
                 )}
 
                 {!visit.prescription &&
+                  !visit.existingPrescription &&
                   visit.orders.length === 0 &&
                   visit.services.length === 0 &&
                   !visit.notes && (

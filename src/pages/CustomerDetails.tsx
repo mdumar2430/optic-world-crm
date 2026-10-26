@@ -29,8 +29,10 @@ import {
   SkeletonRows,
 } from '@/components/ui';
 import { AddFamilyMemberModal } from '@/components/customers/AddFamilyMemberModal';
+import { PrescriptionView } from '@/components/visits/PrescriptionView';
 import { VisitTimeline } from '@/components/visits/VisitTimeline';
 import { formatDate, formatDateTime, formatPhone } from '@/utils/format';
+import { findLatestPrescription } from '@/utils/prescriptions';
 
 const PlusIcon = (
   <svg
@@ -55,6 +57,52 @@ function PhoneLink({ phone }: { phone: string }) {
     >
       {formatPhone(phone)}
     </a>
+  );
+}
+
+/**
+ * The power staff need first when a customer walks in: the newest tested
+ * prescription, or — if none was tested here — what they reported wearing.
+ */
+function LatestPrescriptionCard({ visits }: { visits: Visit[] }) {
+  const latest = findLatestPrescription(visits);
+
+  if (!latest) {
+    return (
+      <Card className="mb-5">
+        <CardHeader title="Latest prescription" />
+        <CardBody>
+          <p className="text-sm text-slate-500">
+            No prescription recorded yet. Add one — existing or newly tested — when you record a
+            visit.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  const { visit, source, prescription } = latest;
+  return (
+    <Card className="mb-5">
+      <CardHeader
+        title="Latest prescription"
+        description={
+          source === 'tested'
+            ? `Tested on ${formatDate(visit.visitDate)} · ${visit.visitCode}`
+            : `Noted on ${formatDate(visit.visitDate)} · ${visit.visitCode} — no eye test recorded since`
+        }
+        actions={
+          source === 'tested' ? (
+            <Badge tone="success">Tested here</Badge>
+          ) : (
+            <Badge tone="warning">Customer&apos;s existing</Badge>
+          )
+        }
+      />
+      <CardBody>
+        <PrescriptionView prescription={prescription} />
+      </CardBody>
+    </Card>
   );
 }
 
@@ -221,6 +269,8 @@ export function CustomerDetailsPage() {
           gets the wide column; reference details sit alongside on desktop. */}
       <div className="grid gap-5 xl:grid-cols-3 xl:items-start">
         <section className="min-w-0 xl:col-span-2" aria-labelledby="visit-history-heading">
+          {visits.data && <LatestPrescriptionCard visits={visits.data} />}
+
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <h2 id="visit-history-heading" className="text-base font-semibold text-slate-900">
               Visit history

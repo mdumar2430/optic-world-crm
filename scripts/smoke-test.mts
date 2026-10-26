@@ -169,6 +169,7 @@ async function main(): Promise<void> {
       visitDate: new Date(),
       visitType: 'consultation',
       notes: 'First visit',
+      existingPrescription: null,
       prescription: null,
       orders: [],
       services: [],
@@ -207,6 +208,7 @@ async function main(): Promise<void> {
       visitDate: new Date(),
       visitType: 'consultation',
       notes: '',
+      existingPrescription: null,
       prescription: null,
       orders: [],
       services: [],
@@ -220,6 +222,7 @@ async function main(): Promise<void> {
     visitDate: new Date(),
     visitType: 'service',
     notes: 'Walk-in repair',
+    existingPrescription: null,
     prescription: null,
     orders: [],
     services: [

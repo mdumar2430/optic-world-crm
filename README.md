@@ -212,12 +212,16 @@ users/{uid}                              profile; the authority on role and isAc
 counters/{customer|visit|order|service}   monotonic code sources
 customers/{CUST-000001}                   one document per customer
 customers/{CUST-000001}/visits/{VISIT-000001}
-                                          visit + its prescription, orders, services
+                                          visit + its prescriptions, orders, services
 ```
 
-A visit holds its own prescription, orders and services, because they describe
+A visit holds its own prescriptions, orders and services, because they describe
 what happened *that day* — a prescription stored at customer level would erase
-the history the shop needs. Orders and services are embedded arrays, capped at
+the history the shop needs. Each visit can carry two prescriptions:
+`existingPrescription`, the power the customer came in wearing (pre-filled on a
+new visit from the latest one on record), and `prescription`, the result of
+that day's eye test. The customer page shows the latest of these, preferring a
+tested prescription. Orders and services are embedded arrays, capped at
 20 each by the rules, which keeps a visit comfortably inside Firestore's 1 MB
 document limit while avoiding a read per order.
 

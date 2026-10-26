@@ -77,6 +77,15 @@ export interface VisitDraft {
   visitDate: string;
   visitType: VisitType;
   notes: string;
+  /** What the customer came in wearing, recorded before testing. */
+  includeExistingPrescription: boolean;
+  existingPrescription: PrescriptionDraft;
+  /**
+   * Where a pre-filled existing prescription came from, e.g. "VISIT-000004 on
+   * 25 Oct 2026". Display only — never saved.
+   */
+  existingPrefilledFrom: string | null;
+  /** The result of this visit's eye test. */
   includePrescription: boolean;
   prescription: PrescriptionDraft;
   orders: OrderDraft[];
@@ -151,6 +160,9 @@ export function emptyVisitDraft(): VisitDraft {
     visitDate: toDateInputValue(new Date()),
     visitType: 'consultation',
     notes: '',
+    includeExistingPrescription: false,
+    existingPrescription: emptyPrescriptionDraft(),
+    existingPrefilledFrom: null,
     includePrescription: false,
     prescription: emptyPrescriptionDraft(),
     orders: [],
@@ -164,6 +176,16 @@ export function emptyVisitDraft(): VisitDraft {
 
 function eyeToDraft(eye: Prescription['rightEye']): EyeDraft {
   return { ...eye };
+}
+
+export function prescriptionToDraft(prescription: Prescription): PrescriptionDraft {
+  return {
+    rightEye: eyeToDraft(prescription.rightEye),
+    leftEye: eyeToDraft(prescription.leftEye),
+    binocularPd: prescription.binocularPd,
+    doctor: prescription.doctor,
+    notes: prescription.notes,
+  };
 }
 
 function orderToDraft(order: ProductOrder): OrderDraft {
@@ -207,15 +229,14 @@ export function visitToDraft(visit: Visit): VisitDraft {
     visitDate: toDateInputValue(visit.visitDate),
     visitType: visit.visitType,
     notes: visit.notes,
+    includeExistingPrescription: Boolean(visit.existingPrescription),
+    existingPrescription: visit.existingPrescription
+      ? prescriptionToDraft(visit.existingPrescription)
+      : emptyPrescriptionDraft(),
+    existingPrefilledFrom: null,
     includePrescription: visit.prescription !== null,
     prescription: visit.prescription
-      ? {
-          rightEye: eyeToDraft(visit.prescription.rightEye),
-          leftEye: eyeToDraft(visit.prescription.leftEye),
-          binocularPd: visit.prescription.binocularPd,
-          doctor: visit.prescription.doctor,
-          notes: visit.prescription.notes,
-        }
+      ? prescriptionToDraft(visit.prescription)
       : emptyPrescriptionDraft(),
     orders: visit.orders.map(orderToDraft),
     services: visit.services.map(serviceToDraft),
@@ -284,7 +305,7 @@ export function visitDraftHasErrors(errors: VisitDraftErrors): boolean {
 /* Draft -> service input                                                     */
 /* -------------------------------------------------------------------------- */
 
-function isPrescriptionEmpty(draft: PrescriptionDraft): boolean {
+export function isPrescriptionEmpty(draft: PrescriptionDraft): boolean {
   const eyeValues = [...Object.values(draft.rightEye), ...Object.values(draft.leftEye)];
   return (
     eyeValues.every(isBlank) &&
@@ -331,22 +352,28 @@ function serviceFromDraft(draft: ServiceDraft): ServiceInput {
   return base;
 }
 
-export function toVisitInput(draft: VisitDraft): VisitInput {
-  const includePrescription = draft.includePrescription && !isPrescriptionEmpty(draft.prescription);
+/** Null when the section is switched off or left completely blank. */
+function prescriptionFromDraft(include: boolean, draft: PrescriptionDraft): Prescription | null {
+  if (!include || isPrescriptionEmpty(draft)) return null;
+  return {
+    rightEye: { ...draft.rightEye },
+    leftEye: { ...draft.leftEye },
+    binocularPd: draft.binocularPd.trim(),
+    doctor: draft.doctor.trim(),
+    notes: draft.notes.trim(),
+  };
+}
 
+export function toVisitInput(draft: VisitDraft): VisitInput {
   return {
     visitDate: fromDateInputValue(draft.visitDate) ?? new Date(),
     visitType: draft.visitType,
     notes: draft.notes.trim(),
-    prescription: includePrescription
-      ? {
-          rightEye: { ...draft.prescription.rightEye },
-          leftEye: { ...draft.prescription.leftEye },
-          binocularPd: draft.prescription.binocularPd.trim(),
-          doctor: draft.prescription.doctor.trim(),
-          notes: draft.prescription.notes.trim(),
-        }
-      : null,
+    existingPrescription: prescriptionFromDraft(
+      draft.includeExistingPrescription,
+      draft.existingPrescription,
+    ),
+    prescription: prescriptionFromDraft(draft.includePrescription, draft.prescription),
     orders: draft.orders.map(orderFromDraft),
     services: draft.services.map(serviceFromDraft),
   };

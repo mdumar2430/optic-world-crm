@@ -278,6 +278,7 @@ function visitToFirestore(
     visitCode: codes.visitCode,
     visitDate: Timestamp.fromDate(input.visitDate),
     visitType: input.visitType,
+    existingPrescription: input.existingPrescription,
     prescription: input.prescription,
     orders: codes.orders.map((order) =>
       orderToFirestore({ ...order, id: order.id ?? '', orderCode: order.orderCode ?? '' }),

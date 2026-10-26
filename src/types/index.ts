@@ -266,7 +266,12 @@ export interface Visit {
   visitDate: Date;
   visitType: VisitType;
 
-  /** Null when no prescription was taken during this visit. */
+  /**
+   * The power the customer came in wearing — read from their current glasses
+   * or an earlier prescription — recorded before testing. Null when not taken.
+   */
+  existingPrescription: Prescription | null;
+  /** The new prescription from this visit's eye test. Null when no test was done. */
   prescription: Prescription | null;
   orders: ProductOrder[];
   services: ServiceJob[];

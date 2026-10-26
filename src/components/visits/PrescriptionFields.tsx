@@ -23,13 +23,32 @@ interface PrescriptionFieldsProps {
   value: PrescriptionDraft;
   onChange: (next: PrescriptionDraft) => void;
   disabled?: boolean;
+  /**
+   * Prepended to every grid cell's accessible name, so two prescriptions on
+   * one form ("Existing", "New") stay distinguishable to screen readers.
+   */
+  ariaPrefix?: string;
+  doctorLabel?: string;
+  notesLabel?: string;
+  notesPlaceholder?: string;
 }
 
 /**
  * Values are stored exactly as typed. No optical arithmetic happens anywhere in
  * this app — transposing or normalising a prescription is a clinical decision.
  */
-export function PrescriptionFields({ value, onChange, disabled }: PrescriptionFieldsProps) {
+export function PrescriptionFields({
+  value,
+  onChange,
+  disabled,
+  ariaPrefix,
+  doctorLabel = 'Doctor / optometrist',
+  notesLabel = 'Prescription notes',
+  notesPlaceholder = 'Coating advice, wearing instructions, anything the customer was told',
+}: PrescriptionFieldsProps) {
+  const cellLabel = (eyeLabel: string, hint: string) =>
+    [ariaPrefix, eyeLabel, hint].filter(Boolean).join(' ');
+
   const setEye = (eye: 'rightEye' | 'leftEye', field: EyeField, next: string) => {
     onChange({ ...value, [eye]: { ...value[eye], [field]: next } });
   };
@@ -65,7 +84,7 @@ export function PrescriptionFields({ value, onChange, disabled }: PrescriptionFi
                 {COLUMNS.map((column) => (
                   <td key={column.field} className="px-1 py-1">
                     <GridInput
-                      aria-label={`${eye.label} ${column.hint}`}
+                      aria-label={cellLabel(eye.label, column.hint)}
                       value={value[eye.key][column.field]}
                       onChange={(event) => setEye(eye.key, column.field, event.target.value)}
                       disabled={disabled}
@@ -91,7 +110,7 @@ export function PrescriptionFields({ value, onChange, disabled }: PrescriptionFi
                     {column.label}
                   </span>
                   <GridInput
-                    aria-label={`${eye.label} ${column.hint}`}
+                    aria-label={cellLabel(eye.label, column.hint)}
                     value={value[eye.key][column.field]}
                     onChange={(event) => setEye(eye.key, column.field, event.target.value)}
                     disabled={disabled}
@@ -113,7 +132,7 @@ export function PrescriptionFields({ value, onChange, disabled }: PrescriptionFi
           placeholder="e.g. 64"
         />
         <Input
-          label="Doctor / optometrist"
+          label={doctorLabel}
           value={value.doctor}
           onChange={(event) => onChange({ ...value, doctor: event.target.value })}
           disabled={disabled}
@@ -122,12 +141,12 @@ export function PrescriptionFields({ value, onChange, disabled }: PrescriptionFi
       </div>
 
       <Textarea
-        label="Prescription notes"
+        label={notesLabel}
         value={value.notes}
         onChange={(event) => onChange({ ...value, notes: event.target.value })}
         disabled={disabled}
         rows={2}
-        placeholder="Coating advice, wearing instructions, anything the customer was told"
+        placeholder={notesPlaceholder}
       />
     </div>
   );

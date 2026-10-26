@@ -66,6 +66,7 @@ export interface VisitInput {
   visitDate: Date;
   visitType: VisitType;
   notes: string;
+  existingPrescription: Prescription | null;
   prescription: Prescription | null;
   orders: OrderInput[];
   services: ServiceInput[];

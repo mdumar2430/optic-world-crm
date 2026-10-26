@@ -19,6 +19,8 @@ import {
 import { VisitFormFields } from '@/components/visits/VisitFormFields';
 import {
   emptyVisitDraft,
+  isPrescriptionEmpty,
+  prescriptionToDraft,
   suggestVisitType,
   toVisitInput,
   validateVisitDraft,
@@ -27,7 +29,8 @@ import {
   type VisitDraft,
 } from '@/components/visits/draft';
 import { RELATIONSHIP_LABELS } from '@/constants/labels';
-import { formatPhone } from '@/utils/format';
+import { formatDate, formatPhone } from '@/utils/format';
+import { findLatestPrescription } from '@/utils/prescriptions';
 
 interface VisitFormPageProps {
   mode: 'create' | 'edit';
@@ -50,8 +53,42 @@ export function VisitFormPage({ mode }: VisitFormPageProps) {
     { enabled: mode === 'edit' },
   );
 
+  // Only needed to pre-fill the customer's current power on a new visit.
+  const pastVisits = useAsync(
+    () => visitService.listByCustomer(customerId, 20),
+    [customerId],
+    { enabled: mode === 'create' },
+  );
+
   const [draft, setDraft] = useState<VisitDraft>(emptyVisitDraft);
   const [loadedVisitId, setLoadedVisitId] = useState<string | null>(null);
+  const [prefilled, setPrefilled] = useState(false);
+
+  // Start the "existing prescription" from the latest one on record. Staff
+  // check it against the customer's glasses and edit or clear it as needed.
+  useEffect(() => {
+    if (mode !== 'create' || prefilled || !pastVisits.data) return;
+    setPrefilled(true);
+    const latest = findLatestPrescription(pastVisits.data);
+    if (!latest) return;
+    const from = `${latest.visit.visitCode} on ${formatDate(latest.visit.visitDate)}`;
+    setDraft((current) => {
+      if (current.includeExistingPrescription || !isPrescriptionEmpty(current.existingPrescription)) {
+        return current;
+      }
+      return {
+        ...current,
+        includeExistingPrescription: true,
+        existingPrescription: {
+          ...prescriptionToDraft(latest.prescription),
+          // The old visit's advice doesn't belong here; record where the
+          // values came from instead.
+          notes: `As recorded at ${from}.`,
+        },
+        existingPrefilledFrom: from,
+      };
+    });
+  }, [mode, prefilled, pastVisits.data]);
 
   useEffect(() => {
     if (mode !== 'edit') return;

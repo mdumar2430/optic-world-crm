@@ -6,7 +6,9 @@ import { ServiceFields } from '@/components/services/ServiceFields';
 import { PrescriptionFields } from './PrescriptionFields';
 import {
   emptyOrderDraft,
+  emptyPrescriptionDraft,
   emptyServiceDraft,
+  isPrescriptionEmpty,
   type OrderDraft,
   type ServiceDraft,
   type VisitDraft,
@@ -31,6 +33,32 @@ const PlusIcon = (
     <path d="M10 5v10M5 10h10" />
   </svg>
 );
+
+/** Checkbox in a card header that switches an optional section on. */
+function SectionToggle({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+      <input
+        type="checkbox"
+        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        disabled={disabled}
+      />
+      {label}
+    </label>
+  );
+}
 
 interface VisitFormFieldsProps {
   value: VisitDraft;
@@ -92,27 +120,94 @@ export function VisitFormFields({ value, errors, disabled, onChange }: VisitForm
 
       <Card>
         <CardHeader
-          title="Prescription"
-          description="Optional. Recorded against this visit, so history is preserved."
+          title="Existing prescription"
+          description="The power the customer is wearing now — from their glasses or an earlier prescription."
           actions={
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                checked={value.includePrescription}
-                onChange={(event) => set('includePrescription', event.target.checked)}
-                disabled={disabled}
-              />
-              Record a prescription
-            </label>
+            <SectionToggle
+              label="Record existing prescription"
+              checked={value.includeExistingPrescription}
+              disabled={disabled}
+              onChange={(checked) => set('includeExistingPrescription', checked)}
+            />
+          }
+        />
+        {value.includeExistingPrescription && (
+          <CardBody className="space-y-4">
+            {value.existingPrefilledFrom && (
+              <div className="flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2.5 text-sm text-brand-900 sm:flex-row sm:items-center sm:justify-between">
+                <p>
+                  Filled in from {value.existingPrefilledFrom}. Check it against the customer&apos;s
+                  current glasses.
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-start sm:self-auto"
+                  disabled={disabled}
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      existingPrescription: emptyPrescriptionDraft(),
+                      existingPrefilledFrom: null,
+                    })
+                  }
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
+            <PrescriptionFields
+              value={value.existingPrescription}
+              onChange={(next) => set('existingPrescription', next)}
+              disabled={disabled}
+              ariaPrefix="Existing"
+              doctorLabel="Prescribed by"
+              notesLabel="Source / notes"
+              notesPlaceholder="e.g. Read from current glasses, or from Dr. Rao's slip dated March 2025"
+            />
+          </CardBody>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="New prescription"
+          description="The result of today's eye test. Saved with this visit, so earlier ones are kept."
+          actions={
+            <SectionToggle
+              label="Record new prescription"
+              checked={value.includePrescription}
+              disabled={disabled}
+              onChange={(checked) => set('includePrescription', checked)}
+            />
           }
         />
         {value.includePrescription && (
-          <CardBody>
+          <CardBody className="space-y-4">
+            {value.includeExistingPrescription && !isPrescriptionEmpty(value.existingPrescription) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={disabled}
+                onClick={() =>
+                  set('prescription', {
+                    ...value.existingPrescription,
+                    rightEye: { ...value.existingPrescription.rightEye },
+                    leftEye: { ...value.existingPrescription.leftEye },
+                    // A new test has its own doctor and notes.
+                    doctor: value.prescription.doctor,
+                    notes: value.prescription.notes,
+                  })
+                }
+              >
+                Start from existing values
+              </Button>
+            )}
             <PrescriptionFields
               value={value.prescription}
               onChange={(next) => set('prescription', next)}
               disabled={disabled}
+              ariaPrefix="New"
             />
           </CardBody>
         )}

@@ -186,6 +186,7 @@ export function visitFromDoc(snapshot: Doc, customerId: string): Visit {
     customerId,
     visitDate: toDateOr(data.visitDate, created),
     visitType: (data.visitType ?? 'other') as Visit['visitType'],
+    existingPrescription: prescriptionFromData(data.existingPrescription),
     prescription: prescriptionFromData(data.prescription),
     orders: Array.isArray(data.orders) ? data.orders.map(orderFromData) : [],
     services: Array.isArray(data.services) ? data.services.map(serviceFromData) : [],

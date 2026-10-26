@@ -348,6 +348,7 @@ const customers: CustomersAdapter = {
         customerId: code,
         visitDate: initialVisit.visitDate,
         visitType: initialVisit.visitType,
+        existingPrescription: initialVisit.existingPrescription,
         prescription: initialVisit.prescription,
         orders: initialVisit.orders.map((order) => toOrder(order, db)),
         services: initialVisit.services.map((entry) => toService(entry, db)),
@@ -530,6 +531,7 @@ const visits: VisitsAdapter = {
         customerId,
         visitDate: input.visitDate,
         visitType: input.visitType,
+        existingPrescription: input.existingPrescription,
         prescription: input.prescription,
         orders: input.orders.map((order) => toOrder(order, db)),
         services: input.services.map((entry) => toService(entry, db)),
@@ -556,6 +558,7 @@ const visits: VisitsAdapter = {
 
       visit.visitDate = input.visitDate;
       visit.visitType = input.visitType;
+      visit.existingPrescription = input.existingPrescription;
       visit.prescription = input.prescription;
       visit.orders = input.orders.map((order) => toOrder(order, db));
       visit.services = input.services.map((entry) => toService(entry, db));
