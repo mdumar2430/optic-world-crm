@@ -28,6 +28,12 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
+  /* Pins a sticky element just above the mobile bottom navigation (61px tall
+     plus the iOS home indicator). Use `lg:bottom-0` where that nav is hidden. */
+  .bottom-above-nav {
+    bottom: calc(61px + env(safe-area-inset-bottom, 0px));
+  }
+
   .scrollbar-thin {
     scrollbar-width: thin;
   }

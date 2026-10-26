@@ -98,7 +98,7 @@ export function LoginPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Demo accounts
             </p>
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-2 space-y-2">
               {DEMO_ACCOUNTS.map((account) => (
                 <li key={account.email} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 text-sm text-slate-600">
@@ -106,14 +106,16 @@ export function LoginPage() {
                     <span className="mx-1.5 text-slate-300">·</span>
                     <span className="truncate">{account.email}</span>
                   </span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => useDemoAccount(account)}
                     disabled={pending}
-                    className="shrink-0 text-sm font-medium text-brand-700 hover:text-brand-800 disabled:opacity-50"
+                    aria-label={`Use the ${account.label.toLowerCase()} demo account`}
+                    className="shrink-0"
                   >
                     Use
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

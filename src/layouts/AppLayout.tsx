@@ -99,6 +99,15 @@ export function AppLayout() {
   // Close the mobile menu whenever navigation happens.
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen]);
+
   const items = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin(user));
 
   const profileBlock = (
@@ -150,40 +159,50 @@ export function AppLayout() {
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
           Optic World
         </span>
+        {/* Navigation lives in the bottom bar; this opens the account panel. */}
         <button
           type="button"
           onClick={() => setMenuOpen((open) => !open)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100"
+          className={cn(
+            'flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold transition',
+            menuOpen
+              ? 'bg-brand-600 text-white'
+              : 'bg-slate-200 text-slate-700 hover:bg-slate-300',
+          )}
           aria-expanded={menuOpen}
-          aria-controls="mobile-menu"
-          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-controls="account-menu"
+          aria-label={menuOpen ? 'Close account menu' : 'Open account menu'}
         >
-          <svg className="h-5 w-5" {...iconProps}>
-            {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
-          </svg>
+          {menuOpen ? (
+            <svg className="h-5 w-5" {...iconProps}>
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          ) : (
+            initialsOf(user?.fullName ?? '')
+          )}
         </button>
+
+        {/* Hangs off the bar itself, so it lines up wherever the bar sits
+            (the demo banner can push it down). */}
+        {menuOpen && (
+          <div
+            id="account-menu"
+            className="absolute inset-x-0 top-full space-y-3 border-b border-slate-200 bg-white p-4 shadow-panel animate-slide-up"
+          >
+            {profileBlock}
+            <Button variant="secondary" fullWidth onClick={() => void signOut()}>
+              Log out
+            </Button>
+          </div>
+        )}
       </header>
 
       {menuOpen && (
-        <div id="mobile-menu" className="fixed inset-0 z-20 lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/30" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-x-0 top-14 space-y-3 border-b border-slate-200 bg-white p-3 shadow-panel animate-slide-up">
-            <nav className="space-y-1" aria-label="Main">
-              {items.map((item) => (
-                <NavLink key={item.to} to={item.to} className={navLinkClass}>
-                  {item.icon}
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-            <div className="space-y-3 border-t border-slate-200 pt-3">
-              {profileBlock}
-              <Button variant="secondary" size="sm" fullWidth onClick={() => void signOut()}>
-                Log out
-              </Button>
-            </div>
-          </div>
-        </div>
+        <div
+          className="fixed inset-0 z-20 bg-slate-900/30 animate-fade-in lg:hidden"
+          onClick={() => setMenuOpen(false)}
+          aria-hidden="true"
+        />
       )}
 
       <main className="px-4 pb-24 pt-5 sm:px-6 lg:ml-64 lg:pb-10 lg:pt-8">

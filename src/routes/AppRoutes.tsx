@@ -50,8 +50,8 @@ export function AppRoutes() {
           element={<VisitFormPage mode="edit" />}
         />
 
-        {/* Admin-only. Firestore rules and the callable functions enforce this
-            independently of the route guard. */}
+        {/* Admin-only. Firestore rules enforce this independently of the
+            route guard. */}
         <Route element={<RequireAdmin />}>
           <Route path="/employees" element={<EmployeesPage />} />
         </Route>

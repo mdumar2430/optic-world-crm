@@ -10,7 +10,7 @@ import {
   CardBody,
   EmptyState,
   ErrorState,
-  FormError,
+  FormActions,
   LoadingState,
   PageHeader,
 } from '@/components/ui';
@@ -111,21 +111,18 @@ export function EditCustomerPage() {
         onChange={setDraft}
       />
 
-      <div className="mt-5 space-y-3">
-        <FormError message={save.error} />
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button
-            variant="secondary"
-            onClick={() => navigate(`/customers/${customerId}`)}
-            disabled={save.pending}
-          >
-            Cancel
-          </Button>
-          <Button loading={save.pending} onClick={() => void save.run()}>
-            Save changes
-          </Button>
-        </div>
-      </div>
+      <FormActions error={save.error}>
+        <Button
+          variant="secondary"
+          onClick={() => navigate(`/customers/${customerId}`)}
+          disabled={save.pending}
+        >
+          Cancel
+        </Button>
+        <Button loading={save.pending} onClick={() => void save.run()}>
+          Save changes
+        </Button>
+      </FormActions>
     </>
   );
 }

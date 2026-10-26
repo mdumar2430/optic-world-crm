@@ -12,7 +12,7 @@ import {
   Card,
   CardBody,
   CardHeader,
-  FormError,
+  FormActions,
   Input,
   PageHeader,
   Select,
@@ -240,14 +240,14 @@ export function NewCustomerPage() {
             onChange={setCustomerDraft}
           />
 
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <FormActions>
             <Button variant="secondary" onClick={() => navigate(-1)}>
               Cancel
             </Button>
             <Button loading={checkingDuplicates} onClick={() => void goToVisitStep()}>
               Continue to first visit
             </Button>
-          </div>
+          </FormActions>
         </>
       ) : (
         <>
@@ -277,25 +277,22 @@ export function NewCustomerPage() {
             onChange={setVisitDraft}
           />
 
-          <div className="mt-5 space-y-3">
-            <FormError message={create.error} />
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button
-                variant="secondary"
-                onClick={() => setStep('details')}
-                disabled={create.pending}
-              >
-                Back
-              </Button>
-              <Button
-                loading={create.pending}
-                disabled={visitDraftHasErrors(visitErrors)}
-                onClick={() => void create.run()}
-              >
-                Save customer and visit
-              </Button>
-            </div>
-          </div>
+          <FormActions error={create.error}>
+            <Button
+              variant="secondary"
+              onClick={() => setStep('details')}
+              disabled={create.pending}
+            >
+              Back
+            </Button>
+            <Button
+              loading={create.pending}
+              disabled={visitDraftHasErrors(visitErrors)}
+              onClick={() => void create.run()}
+            >
+              Save customer and visit
+            </Button>
+          </FormActions>
         </>
       )}
     </>

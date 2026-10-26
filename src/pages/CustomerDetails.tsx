@@ -46,6 +46,18 @@ const PlusIcon = (
   </svg>
 );
 
+/** Tap-to-call on phones; still reads as a formatted number on desktop. */
+function PhoneLink({ phone }: { phone: string }) {
+  return (
+    <a
+      href={`tel:${phone}`}
+      className="tabular-nums text-brand-700 underline-offset-2 hover:underline"
+    >
+      {formatPhone(phone)}
+    </a>
+  );
+}
+
 export function CustomerDetailsPage() {
   const { customerId = '' } = useParams();
   const { can } = useAuth();
@@ -121,7 +133,7 @@ export function CustomerDetailsPage() {
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-mono text-xs">{record.customerCode}</span>
             <span className="text-slate-300">·</span>
-            <span className="tabular-nums">{formatPhone(record.phone)}</span>
+            <PhoneLink phone={record.phone} />
           </span>
         }
         backTo={{ label: 'Back to customers', to: '/customers' }}
@@ -205,151 +217,18 @@ export function CustomerDetailsPage() {
         </Card>
       )}
 
-      <div className="space-y-5">
-        <Card>
-          <CardHeader title="Customer information" />
-          <CardBody>
-            <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-              <DetailItem label="Customer ID" value={<span className="font-mono">{record.customerCode}</span>} />
-              <DetailItem label="Full name" value={record.name} />
-              <DetailItem label="Phone" value={formatPhone(record.phone)} />
-              <DetailItem
-                label="Alternate phone"
-                value={record.alternatePhone ? formatPhone(record.alternatePhone) : ''}
-              />
-              <DetailItem label="Date of birth" value={formatDate(record.dateOfBirth)} />
-              <DetailItem label="Age" value={record.age === null ? '' : `${record.age} years`} />
-              <DetailItem
-                label="Gender"
-                value={record.gender ? GENDER_LABELS[record.gender] : ''}
-              />
-              <DetailItem
-                label="Address"
-                className="sm:col-span-2"
-                value={
-                  [
-                    record.address.line1,
-                    record.address.line2,
-                    record.address.city,
-                    record.address.state,
-                    record.address.postalCode,
-                  ]
-                    .filter(Boolean)
-                    .join(', ') || ''
-                }
-              />
-              <DetailItem label="Hospital / organisation" value={record.hospital} />
-              <DetailItem label="Referred by" value={record.referredBy} />
-              <DetailItem label="Referral details" value={record.referralDetails} />
-              <DetailItem label="Notes" className="sm:col-span-2 lg:col-span-3" value={record.notes} />
-            </dl>
-
-            <p className="mt-5 border-t border-slate-100 pt-3 text-xs text-slate-500">
-              Created by {nameOf(record.createdBy)} on {formatDateTime(record.createdAt)}
-              <span className="mx-1.5 text-slate-300">·</span>
-              Last updated by {nameOf(record.updatedBy)} on {formatDateTime(record.updatedAt)}
-            </p>
-          </CardBody>
-          {can('customers:deactivate') && record.isActive && (
-            <div className="border-t border-slate-200 px-4 py-3 sm:px-6">
-              <Button variant="danger" size="sm" onClick={() => setConfirmDeactivate(true)}>
-                Deactivate customer
-              </Button>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="Family and related customers"
-            description="Each family member is a separate customer with their own history."
-            actions={
-              can('relationships:manage') ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={PlusIcon}
-                  onClick={() => setFamilyModalOpen(true)}
-                >
-                  Add family member
-                </Button>
-              ) : null
-            }
-          />
-          {related.loading ? (
-            <CardBody>
-              <SkeletonRows rows={2} />
-            </CardBody>
-          ) : related.error ? (
-            <ErrorState message={related.error} onRetry={related.reload} />
-          ) : familyMembers.length === 0 && !primaryRelation ? (
-            <EmptyState
-              title="No family members linked"
-              description="Link an existing customer, or create a new one, to keep a household together."
-            />
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {primaryRelation && (
-                <li>
-                  <Link
-                    to={`/customers/${primaryRelation.customer.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:px-6"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900">
-                        {primaryRelation.customer.name}
-                      </p>
-                      <p className="font-mono text-xs text-slate-500">
-                        {primaryRelation.customer.customerCode}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Badge tone="info">Primary customer</Badge>
-                      <Badge>
-                        {record.relationship
-                          ? INVERSE_RELATIONSHIP_LABELS[record.relationship]
-                          : 'Related'}
-                      </Badge>
-                    </div>
-                  </Link>
-                </li>
-              )}
-              {familyMembers.map((entry) => (
-                <li key={entry.customer.id}>
-                  <Link
-                    to={`/customers/${entry.customer.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:px-6"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-900">
-                        {entry.customer.name}
-                      </p>
-                      <p className="font-mono text-xs text-slate-500">
-                        {entry.customer.customerCode}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {entry.customer.visitCount}{' '}
-                        {entry.customer.visitCount === 1 ? 'visit' : 'visits'}
-                      </p>
-                    </div>
-                    <Badge>
-                      {RELATIONSHIP_LABELS[entry.relationship]}
-                      {entry.relationshipNote ? ` — ${entry.relationshipNote}` : ''}
-                    </Badge>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <div>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-900">Visit history</h2>
-            {can('visits:create') && record.isActive && (
-              <ButtonLink to={`/customers/${record.id}/visits/new`} variant="secondary" size="sm">
-                New visit
-              </ButtonLink>
+      {/* Visit history is what staff open this page for, so it comes first and
+          gets the wide column; reference details sit alongside on desktop. */}
+      <div className="grid gap-5 xl:grid-cols-3 xl:items-start">
+        <section className="min-w-0 xl:col-span-2" aria-labelledby="visit-history-heading">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 id="visit-history-heading" className="text-base font-semibold text-slate-900">
+              Visit history
+            </h2>
+            {visits.data && visits.data.length > 0 && (
+              <span className="text-sm text-slate-500">
+                {visits.data.length} {visits.data.length === 1 ? 'visit' : 'visits'}
+              </span>
             )}
           </div>
 
@@ -384,6 +263,156 @@ export function CustomerDetailsPage() {
               onVisitUpdated={replaceVisit}
             />
           )}
+        </section>
+
+        <div className="min-w-0 space-y-5">
+          <Card>
+            <CardHeader title="Customer information" />
+            <CardBody>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+                <DetailItem label="Phone" value={<PhoneLink phone={record.phone} />} />
+                <DetailItem
+                  label="Alternate phone"
+                  value={record.alternatePhone ? <PhoneLink phone={record.alternatePhone} /> : ''}
+                />
+                <DetailItem label="Date of birth" value={formatDate(record.dateOfBirth)} />
+                <DetailItem label="Age" value={record.age === null ? '' : `${record.age} years`} />
+                <DetailItem
+                  label="Gender"
+                  value={record.gender ? GENDER_LABELS[record.gender] : ''}
+                />
+                <DetailItem label="Referred by" value={record.referredBy} />
+                <DetailItem
+                  label="Address"
+                  className="col-span-2"
+                  value={
+                    [
+                      record.address.line1,
+                      record.address.line2,
+                      record.address.city,
+                      record.address.state,
+                      record.address.postalCode,
+                    ]
+                      .filter(Boolean)
+                      .join(', ') || ''
+                  }
+                />
+                <DetailItem
+                  label="Hospital / organisation"
+                  className="col-span-2"
+                  value={record.hospital}
+                />
+                <DetailItem
+                  label="Referral details"
+                  className="col-span-2"
+                  value={record.referralDetails}
+                />
+                <DetailItem
+                  label="Notes"
+                  className="col-span-2"
+                  value={record.notes}
+                />
+              </dl>
+
+              <p className="mt-5 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500">
+                Created by {nameOf(record.createdBy)} on {formatDateTime(record.createdAt)}
+                <br />
+                Last updated by {nameOf(record.updatedBy)} on {formatDateTime(record.updatedAt)}
+              </p>
+            </CardBody>
+            {can('customers:deactivate') && record.isActive && (
+              <div className="border-t border-slate-200 px-4 py-3 sm:px-6">
+                <Button variant="danger" size="sm" onClick={() => setConfirmDeactivate(true)}>
+                  Deactivate customer
+                </Button>
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Family and related customers"
+              description="Each family member is a separate customer with their own history."
+              className="xl:flex-col xl:items-start"
+              actions={
+                can('relationships:manage') ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={PlusIcon}
+                    onClick={() => setFamilyModalOpen(true)}
+                  >
+                    Add family member
+                  </Button>
+                ) : null
+              }
+            />
+            {related.loading ? (
+              <CardBody>
+                <SkeletonRows rows={2} />
+              </CardBody>
+            ) : related.error ? (
+              <ErrorState message={related.error} onRetry={related.reload} />
+            ) : familyMembers.length === 0 && !primaryRelation ? (
+              <EmptyState
+                title="No family members linked"
+                description="Link an existing customer, or create a new one, to keep a household together."
+              />
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {primaryRelation && (
+                  <li>
+                    <Link
+                      to={`/customers/${primaryRelation.customer.id}`}
+                      className="flex items-center justify-between gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:px-6"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {primaryRelation.customer.name}
+                        </p>
+                        <p className="font-mono text-xs text-slate-500">
+                          {primaryRelation.customer.customerCode}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <Badge tone="info">Primary customer</Badge>
+                        <Badge>
+                          {record.relationship
+                            ? INVERSE_RELATIONSHIP_LABELS[record.relationship]
+                            : 'Related'}
+                        </Badge>
+                      </div>
+                    </Link>
+                  </li>
+                )}
+                {familyMembers.map((entry) => (
+                  <li key={entry.customer.id}>
+                    <Link
+                      to={`/customers/${entry.customer.id}`}
+                      className="flex items-center justify-between gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:px-6"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {entry.customer.name}
+                        </p>
+                        <p className="font-mono text-xs text-slate-500">
+                          {entry.customer.customerCode}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {entry.customer.visitCount}{' '}
+                          {entry.customer.visitCount === 1 ? 'visit' : 'visits'}
+                        </p>
+                      </div>
+                      <Badge>
+                        {RELATIONSHIP_LABELS[entry.relationship]}
+                        {entry.relationshipNote ? ` — ${entry.relationshipNote}` : ''}
+                      </Badge>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </div>
       </div>
 

@@ -12,7 +12,7 @@ import {
   CardHeader,
   EmptyState,
   ErrorState,
-  FormError,
+  FormActions,
   LoadingState,
   PageHeader,
 } from '@/components/ui';
@@ -167,25 +167,22 @@ export function VisitFormPage({ mode }: VisitFormPageProps) {
         onChange={setDraft}
       />
 
-      <div className="mt-5 space-y-3">
-        <FormError message={save.error} />
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button
-            variant="secondary"
-            onClick={() => navigate(`/customers/${customerId}`)}
-            disabled={save.pending}
-          >
-            Cancel
-          </Button>
-          <Button
-            loading={save.pending}
-            disabled={visitDraftHasErrors(errors)}
-            onClick={() => void save.run()}
-          >
-            {mode === 'create' ? 'Save visit' : 'Save changes'}
-          </Button>
-        </div>
-      </div>
+      <FormActions error={save.error}>
+        <Button
+          variant="secondary"
+          onClick={() => navigate(`/customers/${customerId}`)}
+          disabled={save.pending}
+        >
+          Cancel
+        </Button>
+        <Button
+          loading={save.pending}
+          disabled={visitDraftHasErrors(errors)}
+          onClick={() => void save.run()}
+        >
+          {mode === 'create' ? 'Save visit' : 'Save changes'}
+        </Button>
+      </FormActions>
     </>
   );
 }

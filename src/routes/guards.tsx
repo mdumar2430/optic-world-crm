@@ -26,8 +26,8 @@ export function RequireAuth({ children }: { children?: ReactNode }) {
 /**
  * Admin-only routes.
  *
- * This hides the screen; Firestore rules and the callable functions reject the
- * same requests independently, so bypassing this changes nothing.
+ * This hides the screen; Firestore rules reject the same requests
+ * independently, so bypassing this changes nothing.
  */
 export function RequireAdmin({ children }: { children?: ReactNode }) {
   const { user, initialising } = useAuth();

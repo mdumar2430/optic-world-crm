@@ -18,9 +18,9 @@ to what you are building (`src/pages/`). Reuse; do not restyle.
 
 1. **Build from `@/components/ui`** (`Button`, `ButtonLink`, `Input`, `Select`,
    `Textarea`, `Card`, `CardHeader`, `CardBody`, `CardFooter`, `DetailItem`,
-   `FormSection`, `Badge` and the status badges, `PageHeader`, `Modal`,
-   `ConfirmDialog`, `LoadingState`, `SkeletonRows`, `EmptyState`, `ErrorState`,
-   `FormError`, `Spinner`). Never hand-roll a button, input, card or dialog. If a
+   `FormSection`, `FormActions`, `Badge` and the status badges, `PageHeader`,
+   `Modal`, `ConfirmDialog`, `LoadingState`, `SkeletonRows`, `EmptyState`,
+   `ErrorState`, `FormError`, `Spinner`). Never hand-roll a button, input, card or dialog. If a
    primitive is missing a variant, add it to the primitive, not inline.
 2. **Join classes with `cn()`** from `@/utils/cn`. No `clsx`, no
    template-string concatenation of conditional classes.
@@ -228,21 +228,24 @@ const save = useMutation(async () => {
 });
 
 …
-<div className="mt-5 space-y-3">
-  <FormError message={save.error} />
-  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-    <Button variant="secondary" onClick={cancel} disabled={save.pending}>Cancel</Button>
-    <Button loading={save.pending} onClick={() => void save.run()}>Save changes</Button>
-  </div>
-</div>
+<FormActions error={save.error}>
+  <Button variant="secondary" onClick={cancel} disabled={save.pending}>Cancel</Button>
+  <Button loading={save.pending} onClick={() => void save.run()}>Save changes</Button>
+</FormActions>
 ```
+
+- **Every full-page form ends with `FormActions`.** It sticks to the bottom of
+  the screen while the form scrolls (above the bottom nav on phones, floating
+  on desktop), so Save is always reachable, and shows the form-level error
+  above the buttons. Children go secondary first, primary last; on phones they
+  share one row and the primary takes the spare width.
+- Short forms inside a `Modal` keep using the modal's `footer` instead.
 
 - Keep form state in a "draft" of strings (see `components/*/draft.ts`) with a
   `validate…Draft` function returning field errors; convert to the service input
   only on submit. Client validation is for fast feedback — the rules enforce it.
-- Action row: right-aligned on `sm+`, stacked on phones with the primary button
-  on top (`flex-col-reverse`). Cancel is always `secondary`.
-- Form-level errors go in `FormError` directly above the action row.
+- Cancel is always `secondary`. Form-level errors go through `FormActions`'
+  `error` prop (or `FormError` above a modal's footer).
 
 ## Responsive behaviour
 
@@ -255,7 +258,19 @@ Mobile-first; the main breakpoints are `sm` (640px) and `lg` (1024px).
   as a card list (`lg:hidden`). Nothing should need horizontal scrolling.
 - Headers and footers stack on phones (`flex-col … sm:flex-row`).
 - Use `truncate` with `min-w-0` on text that sits next to fixed-width things.
-- Stat grids: `grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4`.
+- Stat grids: `grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4`; each tile is an
+  icon chip, the number and a short label (icon above on phones, beside from `sm`).
+- Main-plus-side layouts (e.g. visit history beside customer details) split
+  only from `xl` (`grid gap-5 xl:grid-cols-3`, main `xl:col-span-2`). With the
+  256px sidebar, a split at `lg` leaves both columns too narrow. Put the content
+  staff use most first in the DOM so it also comes first on phones.
+- The phone top bar holds the logo and an account button (initials) that opens
+  profile + Log out; navigation lives only in the bottom bar. Don't add nav
+  links to the top bar.
+- Phone numbers that a user may want to call are `tel:` links
+  (`text-brand-700 tabular-nums`).
+- Sticky elements that must clear the bottom nav use the `bottom-above-nav`
+  utility (`src/index.css`) plus `lg:bottom-…` for desktop.
 
 ## Accessibility checklist
 
