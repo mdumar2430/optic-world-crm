@@ -8,6 +8,7 @@ dist-ssr
 !.env.example
 .firebase
 firebase-debug.log
+firestore-debug.log
 functions/lib
 functions/node_modules
 .DS_Store

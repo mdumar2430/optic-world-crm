@@ -303,19 +303,75 @@ function visitToFirestore(
   return base;
 }
 
-/** Reserves the next value of a counter inside an open transaction. */
-async function reserveCode(
+const CODE_FORMATS = {
+  customer: { prefix: 'CUST', width: 6 },
+  visit: { prefix: 'VISIT', width: 6 },
+  order: { prefix: 'ORD', width: 5 },
+  service: { prefix: 'SRV', width: 5 },
+} as const;
+
+type CounterName = keyof typeof CODE_FORMATS;
+
+/**
+ * Reserves codes from several counters inside an open transaction.
+ *
+ * Firestore requires every read in a transaction to happen before any write,
+ * so all counters are read first and each is then written once, advanced by
+ * the number of codes taken. Call it after the transaction's other reads and
+ * before its other writes. Taking several codes from one counter (two orders
+ * on one visit) yields consecutive, distinct codes.
+ */
+async function reserveCodes(
   transaction: Transaction,
-  counterName: string,
-  prefix: string,
-  width: number,
-): Promise<string> {
-  const ref = doc(getDb(), paths.counter(counterName));
-  const snapshot = await transaction.get(ref);
-  const current = snapshot.exists() ? Number(snapshot.data().value ?? 0) : 0;
-  const next = current + 1;
-  transaction.set(ref, { value: next, updatedAt: serverTimestamp() }, { merge: true });
-  return `${prefix}-${`${next}`.padStart(width, '0')}`;
+  counts: Partial<Record<CounterName, number>>,
+): Promise<Record<CounterName, string[]>> {
+  const names = (Object.keys(counts) as CounterName[]).filter((name) => (counts[name] ?? 0) > 0);
+  const refs = names.map((name) => doc(getDb(), paths.counter(name)));
+  const snapshots = await Promise.all(refs.map((ref) => transaction.get(ref)));
+
+  const codes: Record<CounterName, string[]> = { customer: [], visit: [], order: [], service: [] };
+  names.forEach((name, index) => {
+    const ref = refs[index];
+    const snapshot = snapshots[index];
+    if (!ref || !snapshot) return;
+    const current = snapshot.exists() ? Number(snapshot.data().value ?? 0) : 0;
+    const count = counts[name] ?? 0;
+    const { prefix, width } = CODE_FORMATS[name];
+    for (let offset = 1; offset <= count; offset += 1) {
+      codes[name].push(`${prefix}-${`${current + offset}`.padStart(width, '0')}`);
+    }
+    transaction.set(ref, { value: current + count, updatedAt: serverTimestamp() }, { merge: true });
+  });
+  return codes;
+}
+
+/** How many new order and service codes a visit needs (existing ones keep theirs). */
+function codesNeeded(input: Pick<VisitInput, 'orders' | 'services'>) {
+  return {
+    order: input.orders.filter((order) => !order.orderCode).length,
+    service: input.services.filter((job) => !job.serviceCode).length,
+  };
+}
+
+/** Gives each new order and service a reserved code and a local id. */
+function assignCodes(
+  input: Pick<VisitInput, 'orders' | 'services'>,
+  codes: Record<CounterName, string[]>,
+): { orders: OrderInput[]; services: ServiceInput[] } {
+  const orderCodes = [...codes.order];
+  const serviceCodes = [...codes.service];
+  return {
+    orders: input.orders.map((order) => ({
+      ...order,
+      id: order.id ?? localId('ord'),
+      orderCode: order.orderCode ?? orderCodes.shift() ?? '',
+    })),
+    services: input.services.map((job) => ({
+      ...job,
+      id: job.id ?? localId('srv'),
+      serviceCode: job.serviceCode ?? serviceCodes.shift() ?? '',
+    })),
+  };
 }
 
 function localId(prefix: string): string {
@@ -414,26 +470,15 @@ const customers: CustomersAdapter = {
     const uid = requireUid();
     return guard('Unable to save this customer. Please try again.', async () => {
       const result = await runTransaction(getDb(), async (transaction) => {
-        // All reads must precede writes inside a Firestore transaction.
-        const customerCode = await reserveCode(transaction, 'customer', 'CUST', 6);
-        const visitCode = await reserveCode(transaction, 'visit', 'VISIT', 6);
-
-        const orderCodes: OrderInput[] = [];
-        for (const order of initialVisit.orders) {
-          orderCodes.push({
-            ...order,
-            id: order.id ?? localId('ord'),
-            orderCode: order.orderCode ?? (await reserveCode(transaction, 'order', 'ORD', 5)),
-          });
-        }
-        const serviceCodes: ServiceInput[] = [];
-        for (const job of initialVisit.services) {
-          serviceCodes.push({
-            ...job,
-            id: job.id ?? localId('srv'),
-            serviceCode: job.serviceCode ?? (await reserveCode(transaction, 'service', 'SRV', 5)),
-          });
-        }
+        // Reads only: every counter is read before anything is written.
+        const codes = await reserveCodes(transaction, {
+          customer: 1,
+          visit: 1,
+          ...codesNeeded(initialVisit),
+        });
+        const customerCode = codes.customer[0] ?? '';
+        const visitCode = codes.visit[0] ?? '';
+        const { orders: orderCodes, services: serviceCodes } = assignCodes(initialVisit, codes);
 
         const customerRef = doc(getDb(), paths.customer(customerCode));
         const visitRef = doc(getDb(), paths.visit(customerCode, visitCode));
@@ -718,23 +763,9 @@ const visits: VisitsAdapter = {
         const customerSnap = await transaction.get(customerRef);
         if (!customerSnap.exists()) throw new AppError('not-found', 'Customer not found.');
 
-        const code = await reserveCode(transaction, 'visit', 'VISIT', 6);
-        const orderCodes: OrderInput[] = [];
-        for (const order of input.orders) {
-          orderCodes.push({
-            ...order,
-            id: order.id ?? localId('ord'),
-            orderCode: order.orderCode ?? (await reserveCode(transaction, 'order', 'ORD', 5)),
-          });
-        }
-        const serviceCodes: ServiceInput[] = [];
-        for (const job of input.services) {
-          serviceCodes.push({
-            ...job,
-            id: job.id ?? localId('srv'),
-            serviceCode: job.serviceCode ?? (await reserveCode(transaction, 'service', 'SRV', 5)),
-          });
-        }
+        const codes = await reserveCodes(transaction, { visit: 1, ...codesNeeded(input) });
+        const code = codes.visit[0] ?? '';
+        const { orders: orderCodes, services: serviceCodes } = assignCodes(input, codes);
 
         const currentCount = Number(customerSnap.data().visitCount ?? 0);
         const currentLast = customerSnap.data().lastVisitAt as Timestamp | null | undefined;
@@ -775,22 +806,8 @@ const visits: VisitsAdapter = {
           customerId,
         );
 
-        const orderCodes: OrderInput[] = [];
-        for (const order of input.orders) {
-          orderCodes.push({
-            ...order,
-            id: order.id ?? localId('ord'),
-            orderCode: order.orderCode ?? (await reserveCode(transaction, 'order', 'ORD', 5)),
-          });
-        }
-        const serviceCodes: ServiceInput[] = [];
-        for (const job of input.services) {
-          serviceCodes.push({
-            ...job,
-            id: job.id ?? localId('srv'),
-            serviceCode: job.serviceCode ?? (await reserveCode(transaction, 'service', 'SRV', 5)),
-          });
-        }
+        const codes = await reserveCodes(transaction, codesNeeded(input));
+        const { orders: orderCodes, services: serviceCodes } = assignCodes(input, codes);
 
         transaction.update(
           visitRef,

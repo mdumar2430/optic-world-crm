@@ -136,14 +136,20 @@ service cloud.firestore {
     match /counters/{counterId} {
       allow read: if isStaff();
 
-      // A counter may only ever move forward by one, inside a transaction.
-      // This is what makes concurrently generated customer codes unique and
-      // guarantees a code is never reused.
+      // A counter may only ever move forward, inside a transaction. That is
+      // what makes concurrently generated codes unique and guarantees a code
+      // is never reused. One save may take several codes from a counter (a
+      // visit with several orders), so it may advance by up to 20 — the most
+      // orders or services a single visit can hold.
       allow create: if isStaff()
-        && incoming().value == 1;
+        && incoming().value is int
+        && incoming().value >= 1
+        && incoming().value <= 20;
 
       allow update: if isStaff()
-        && incoming().value == existing().value + 1;
+        && incoming().value is int
+        && incoming().value > existing().value
+        && incoming().value <= existing().value + 20;
 
       allow delete: if false;
     }

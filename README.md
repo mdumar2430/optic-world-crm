@@ -166,8 +166,10 @@ signs them straight back out and the database gives them nothing.
 - `createdBy`/`updatedBy` must equal the caller and the timestamps must be the
   server clock;
 - customers and visits can never be deleted — history is permanent;
-- counters may only ever increment by exactly one, which is what makes
-  concurrently generated customer codes unique and non-reusable.
+- counters may only ever move forward (by at most 20, the most orders or
+  services one visit holds), which is what makes concurrently generated codes
+  unique and non-reusable. A save reads every counter it needs before writing
+  any, as Firestore transactions require.
 
 **Known boundary.** Order and service status transitions are validated in the
 service layer and constrained by the UI (only reachable statuses are offered),
