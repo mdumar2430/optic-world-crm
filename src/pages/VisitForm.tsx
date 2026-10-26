@@ -18,19 +18,22 @@ import {
 } from '@/components/ui';
 import { VisitFormFields } from '@/components/visits/VisitFormFields';
 import {
+  emptyOldGlassesDraft,
   emptyVisitDraft,
-  isPrescriptionEmpty,
+  isOldGlassesEmpty,
+  oldGlassesToDraft,
   prescriptionToDraft,
   suggestVisitType,
   toVisitInput,
   validateVisitDraft,
   visitDraftHasErrors,
   visitToDraft,
+  type OldGlassesDraft,
   type VisitDraft,
 } from '@/components/visits/draft';
 import { RELATIONSHIP_LABELS } from '@/constants/labels';
 import { formatDate, formatPhone } from '@/utils/format';
-import { findLatestPrescription } from '@/utils/prescriptions';
+import { findLatestLensOrder, findLatestPrescription } from '@/utils/prescriptions';
 
 interface VisitFormPageProps {
   mode: 'create' | 'edit';
@@ -64,28 +67,39 @@ export function VisitFormPage({ mode }: VisitFormPageProps) {
   const [loadedVisitId, setLoadedVisitId] = useState<string | null>(null);
   const [prefilled, setPrefilled] = useState(false);
 
-  // Start the "existing prescription" from the latest one on record. Staff
-  // check it against the customer's glasses and edit or clear it as needed.
+  // Start "old glasses" from what we last gave the customer: the latest
+  // prescribed power and the lens from their latest order. Staff check it
+  // against the glasses they are wearing and edit or clear it as needed.
   useEffect(() => {
     if (mode !== 'create' || prefilled || !pastVisits.data) return;
     setPrefilled(true);
     const latest = findLatestPrescription(pastVisits.data);
     if (!latest) return;
     const from = `${latest.visit.visitCode} on ${formatDate(latest.visit.visitDate)}`;
+
+    let glasses: OldGlassesDraft;
+    if (latest.source === 'old_glasses' && latest.visit.oldGlasses) {
+      // Nothing prescribed since: they are likely still in the same glasses.
+      glasses = oldGlassesToDraft(latest.visit.oldGlasses);
+    } else {
+      const lensOrder = findLatestLensOrder(pastVisits.data);
+      glasses = {
+        ...emptyOldGlassesDraft(),
+        prescription: prescriptionToDraft(latest.prescription),
+        lensCompany: lensOrder?.lensCompany ?? '',
+        lensName: lensOrder?.lensName ?? '',
+      };
+    }
+    // The earlier visit's advice doesn't belong here; record the source instead.
+    glasses.prescription.notes = `As recorded at ${from}.`;
+
     setDraft((current) => {
-      if (current.includeExistingPrescription || !isPrescriptionEmpty(current.existingPrescription)) {
-        return current;
-      }
+      if (current.includeOldGlasses || !isOldGlassesEmpty(current.oldGlasses)) return current;
       return {
         ...current,
-        includeExistingPrescription: true,
-        existingPrescription: {
-          ...prescriptionToDraft(latest.prescription),
-          // The old visit's advice doesn't belong here; record where the
-          // values came from instead.
-          notes: `As recorded at ${from}.`,
-        },
-        existingPrefilledFrom: from,
+        includeOldGlasses: true,
+        oldGlasses: glasses,
+        oldGlassesPrefilledFrom: from,
       };
     });
   }, [mode, prefilled, pastVisits.data]);

@@ -154,6 +154,19 @@ export interface Prescription {
   notes: string;
 }
 
+export const LENS_TYPES = ['single_vision', 'bifocal', 'progressive', 'reading', 'other'] as const;
+export type LensType = (typeof LENS_TYPES)[number];
+
+/** The glasses a customer walks in wearing: the power read from them, and the lens. */
+export interface OldGlasses {
+  prescription: Prescription;
+  lensType: LensType | null;
+  lensCompany: string;
+  lensName: string;
+  /** Coating, material, index — free text, as read or as the customer reports. */
+  lensDetails: string;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Product orders                                                             */
 /* -------------------------------------------------------------------------- */
@@ -266,12 +279,18 @@ export interface Visit {
   visitDate: Date;
   visitType: VisitType;
 
-  /**
-   * The power the customer came in wearing — read from their current glasses
-   * or an earlier prescription — recorded before testing. Null when not taken.
+  /*
+   * A visit can record up to three readings, in the order they happen in the
+   * shop. Each is null when it was not taken.
    */
-  existingPrescription: Prescription | null;
-  /** The new prescription from this visit's eye test. Null when no test was done. */
+  /** 1. The customer's current glasses: power read from them, plus lens details. */
+  oldGlasses: OldGlasses | null;
+  /** 2. The auto-refractor (AR machine) reading taken in the shop. */
+  arReading: Prescription | null;
+  /**
+   * 3. Prescribed power — the final power, entered by staff, that the lens is
+   * made to. This is "the customer's prescription" everywhere else in the app.
+   */
   prescription: Prescription | null;
   orders: ProductOrder[];
   services: ServiceJob[];

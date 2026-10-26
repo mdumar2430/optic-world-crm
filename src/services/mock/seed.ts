@@ -7,6 +7,7 @@
 import type {
   Customer,
   EyePrescription,
+  OldGlasses,
   Prescription,
   ProductOrder,
   ServiceJob,
@@ -463,7 +464,8 @@ interface VisitSeed {
   customerId: string;
   daysAgo: number;
   visitType: Visit['visitType'];
-  existingPrescription?: Prescription | null;
+  oldGlasses?: OldGlasses | null;
+  arReading?: Prescription | null;
   prescription?: Prescription | null;
   orders?: ProductOrder[];
   services?: ServiceJob[];
@@ -480,7 +482,8 @@ function visit(seed: VisitSeed): Visit {
     customerId: seed.customerId,
     visitDate,
     visitType: seed.visitType,
-    existingPrescription: seed.existingPrescription ?? null,
+    oldGlasses: seed.oldGlasses ?? null,
+    arReading: seed.arReading ?? null,
     prescription: seed.prescription ?? null,
     orders: seed.orders ?? [],
     services: seed.services ?? [],
@@ -554,11 +557,22 @@ function buildVisits(): Visit[] {
       visitType: 'prescription',
       createdBy: UID.arjun,
       notes: 'Annual re-check. Power increased slightly in the right eye.',
-      existingPrescription: prescription({
-        right: { distanceSph: '-1.25', distanceCyl: '-0.50', distanceAxis: '180', pd: '32' },
-        left: { distanceSph: '-1.00', distanceCyl: '-0.25', distanceAxis: '175', pd: '32' },
+      oldGlasses: {
+        prescription: prescription({
+          right: { distanceSph: '-1.25', distanceCyl: '-0.50', distanceAxis: '180', pd: '32' },
+          left: { distanceSph: '-1.00', distanceCyl: '-0.25', distanceAxis: '175', pd: '32' },
+          binocularPd: '64',
+          notes: 'Read from his current Titan frame on the lensometer.',
+        }),
+        lensType: 'single_vision',
+        lensCompany: 'Crizal',
+        lensName: 'Crizal Easy UV 1.56',
+        lensDetails: 'Anti-reflective, UV protection. Light scratches on the left lens.',
+      },
+      arReading: prescription({
+        right: { distanceSph: '-1.75', distanceCyl: '-0.75', distanceAxis: '178' },
+        left: { distanceSph: '-1.25', distanceCyl: '-0.25', distanceAxis: '172' },
         binocularPd: '64',
-        notes: 'Read from his current Titan frame.',
       }),
       prescription: prescription({
         right: {
@@ -619,11 +633,16 @@ function buildVisits(): Visit[] {
       customerId: 'CUST-000002',
       daysAgo: 190,
       visitType: 'prescription',
-      existingPrescription: prescription({
-        right: { nearSph: '+0.75' },
-        left: { nearSph: '+0.75' },
-        notes: 'Over-the-counter readers she has been using.',
-      }),
+      oldGlasses: {
+        prescription: prescription({
+          right: { nearSph: '+0.75' },
+          left: { nearSph: '+0.75' },
+        }),
+        lensType: 'reading',
+        lensCompany: '',
+        lensName: '',
+        lensDetails: 'Over-the-counter readers she has been using.',
+      },
       prescription: prescription({
         right: { nearSph: '+1.00', pd: '31' },
         left: { nearSph: '+1.00', pd: '31' },

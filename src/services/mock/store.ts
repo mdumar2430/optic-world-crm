@@ -28,7 +28,7 @@ export interface MockDb {
 const STORAGE_KEY = 'optic-world:mock-db';
 const SESSION_KEY = 'optic-world:mock-session';
 /** Bumping this discards an older cached demo dataset. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /* -------------------------------------------------------------------------- */
 /* Date-aware JSON                                                            */

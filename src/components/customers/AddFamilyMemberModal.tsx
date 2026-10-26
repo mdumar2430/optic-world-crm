@@ -63,8 +63,8 @@ export function AddFamilyMemberModal({
     <Modal
       open={open}
       onClose={close}
-      title="Add family member"
-      description={`Link another customer to ${primary.name}.`}
+      title="Link an existing customer"
+      description={`Link a customer who is already in the system to ${primary.name}.`}
       footer={
         <>
           <Button variant="secondary" onClick={close} disabled={link.pending}>

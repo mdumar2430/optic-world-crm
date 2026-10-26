@@ -12,13 +12,21 @@ interface CustomerFormFieldsProps {
   errors: CustomerDraftErrors;
   disabled?: boolean;
   onChange: (next: CustomerDraft) => void;
+  /** Guidance under the phone field, e.g. when it was copied from the primary customer. */
+  phoneHint?: string;
 }
 
 /**
  * Every field from the shop's paper form, grouped into three sections rather
  * than presented as one long list.
  */
-export function CustomerFormFields({ value, errors, disabled, onChange }: CustomerFormFieldsProps) {
+export function CustomerFormFields({
+  value,
+  errors,
+  disabled,
+  onChange,
+  phoneHint,
+}: CustomerFormFieldsProps) {
   const set = <K extends keyof CustomerDraft>(field: K, next: CustomerDraft[K]) => {
     onChange({ ...value, [field]: next });
   };
@@ -60,6 +68,7 @@ export function CustomerFormFields({ value, errors, disabled, onChange }: Custom
               autoComplete="tel"
               value={value.phone}
               error={errors.phone}
+              hint={phoneHint}
               onChange={(event) => set('phone', normalisePhone(event.target.value))}
               disabled={disabled}
               placeholder="10-digit mobile number"

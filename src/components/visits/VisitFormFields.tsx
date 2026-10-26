@@ -1,15 +1,26 @@
-import { Card, CardBody, CardHeader, Button, Input, Select, Textarea } from '@/components/ui';
-import { VISIT_TYPE_LABELS } from '@/constants/labels';
-import { VISIT_TYPES } from '@/types';
+import {
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  FormSection,
+  Input,
+  Select,
+  Textarea,
+} from '@/components/ui';
+import { LENS_TYPE_LABELS, VISIT_TYPE_LABELS } from '@/constants/labels';
+import { LENS_TYPES, VISIT_TYPES } from '@/types';
 import { OrderFields } from '@/components/orders/OrderFields';
 import { ServiceFields } from '@/components/services/ServiceFields';
-import { PrescriptionFields } from './PrescriptionFields';
+import { PrescriptionFields, type EyeField } from './PrescriptionFields';
 import {
+  emptyOldGlassesDraft,
   emptyOrderDraft,
-  emptyPrescriptionDraft,
   emptyServiceDraft,
   isPrescriptionEmpty,
+  type OldGlassesDraft,
   type OrderDraft,
+  type PrescriptionDraft,
   type ServiceDraft,
   type VisitDraft,
   type VisitDraftErrors,
@@ -19,6 +30,11 @@ const VISIT_TYPE_OPTIONS = VISIT_TYPES.map((value) => ({
   value,
   label: VISIT_TYPE_LABELS[value],
 }));
+
+const LENS_TYPE_OPTIONS = LENS_TYPES.map((value) => ({ value, label: LENS_TYPE_LABELS[value] }));
+
+/** What an auto-refractor prints: distance power and pupillary distance. */
+const AR_COLUMNS: readonly EyeField[] = ['distanceSph', 'distanceCyl', 'distanceAxis', 'pd'];
 
 const PlusIcon = (
   <svg
@@ -83,6 +99,26 @@ export function VisitFormFields({ value, errors, disabled, onChange }: VisitForm
     set('services', value.services.map((job) => (job.key === key ? next : job)));
   };
 
+  const setOldGlasses = (patch: Partial<OldGlassesDraft>) => {
+    set('oldGlasses', { ...value.oldGlasses, ...patch });
+  };
+
+  const canCopyAr = value.includeArReading && !isPrescriptionEmpty(value.arReading);
+  const canCopyOldGlasses =
+    value.includeOldGlasses && !isPrescriptionEmpty(value.oldGlasses.prescription);
+
+  /** Starts the prescribed power from another reading; staff then adjust it. */
+  const copyIntoPrescribed = (source: PrescriptionDraft) => {
+    set('prescription', {
+      rightEye: { ...source.rightEye },
+      leftEye: { ...source.leftEye },
+      binocularPd: source.binocularPd,
+      // The prescription has its own doctor and notes.
+      doctor: value.prescription.doctor,
+      notes: value.prescription.notes,
+    });
+  };
+
   return (
     <div className="space-y-5">
       <Card>
@@ -120,24 +156,24 @@ export function VisitFormFields({ value, errors, disabled, onChange }: VisitForm
 
       <Card>
         <CardHeader
-          title="Existing prescription"
-          description="The power the customer is wearing now — from their glasses or an earlier prescription."
+          title="Old glasses"
+          description="The glasses the customer is wearing now: the power read from them, and the lens."
           actions={
             <SectionToggle
-              label="Record existing prescription"
-              checked={value.includeExistingPrescription}
+              label="Record old glasses"
+              checked={value.includeOldGlasses}
               disabled={disabled}
-              onChange={(checked) => set('includeExistingPrescription', checked)}
+              onChange={(checked) => set('includeOldGlasses', checked)}
             />
           }
         />
-        {value.includeExistingPrescription && (
-          <CardBody className="space-y-4">
-            {value.existingPrefilledFrom && (
+        {value.includeOldGlasses && (
+          <CardBody className="space-y-5">
+            {value.oldGlassesPrefilledFrom && (
               <div className="flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2.5 text-sm text-brand-900 sm:flex-row sm:items-center sm:justify-between">
                 <p>
-                  Filled in from {value.existingPrefilledFrom}. Check it against the customer&apos;s
-                  current glasses.
+                  Filled in from {value.oldGlassesPrefilledFrom}. Check it against the glasses the
+                  customer is wearing.
                 </p>
                 <Button
                   variant="ghost"
@@ -147,8 +183,8 @@ export function VisitFormFields({ value, errors, disabled, onChange }: VisitForm
                   onClick={() =>
                     onChange({
                       ...value,
-                      existingPrescription: emptyPrescriptionDraft(),
-                      existingPrefilledFrom: null,
+                      oldGlasses: emptyOldGlassesDraft(),
+                      oldGlassesPrefilledFrom: null,
                     })
                   }
                 >
@@ -157,13 +193,79 @@ export function VisitFormFields({ value, errors, disabled, onChange }: VisitForm
               </div>
             )}
             <PrescriptionFields
-              value={value.existingPrescription}
-              onChange={(next) => set('existingPrescription', next)}
+              value={value.oldGlasses.prescription}
+              onChange={(next) => setOldGlasses({ prescription: next })}
               disabled={disabled}
-              ariaPrefix="Existing"
+              ariaPrefix="Old glasses"
               doctorLabel="Prescribed by"
               notesLabel="Source / notes"
-              notesPlaceholder="e.g. Read from current glasses, or from Dr. Rao's slip dated March 2025"
+              notesPlaceholder="e.g. Read on the lensometer, or from Dr. Rao's slip dated March 2025"
+            />
+            <FormSection title="Lens" description="As far as you can tell from the glasses or the customer.">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Select
+                  label="Lens type"
+                  value={value.oldGlasses.lensType}
+                  options={LENS_TYPE_OPTIONS}
+                  placeholder="Not known"
+                  onChange={(event) =>
+                    setOldGlasses({ lensType: event.target.value as OldGlassesDraft['lensType'] })
+                  }
+                  disabled={disabled}
+                />
+                <Input
+                  label="Lens brand"
+                  value={value.oldGlasses.lensCompany}
+                  onChange={(event) => setOldGlasses({ lensCompany: event.target.value })}
+                  disabled={disabled}
+                  placeholder="e.g. Crizal"
+                />
+                <Input
+                  label="Lens name"
+                  value={value.oldGlasses.lensName}
+                  onChange={(event) => setOldGlasses({ lensName: event.target.value })}
+                  disabled={disabled}
+                  placeholder="e.g. Crizal Easy UV 1.56"
+                />
+              </div>
+              <Textarea
+                label="Lens details"
+                containerClassName="mt-4"
+                value={value.oldGlasses.lensDetails}
+                onChange={(event) => setOldGlasses({ lensDetails: event.target.value })}
+                disabled={disabled}
+                rows={2}
+                placeholder="Coating, material or index, condition — e.g. anti-glare, scratched"
+              />
+            </FormSection>
+          </CardBody>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="AR machine reading"
+          description="The auto-refractor result taken in the shop."
+          actions={
+            <SectionToggle
+              label="Record AR reading"
+              checked={value.includeArReading}
+              disabled={disabled}
+              onChange={(checked) => set('includeArReading', checked)}
+            />
+          }
+        />
+        {value.includeArReading && (
+          <CardBody>
+            <PrescriptionFields
+              value={value.arReading}
+              onChange={(next) => set('arReading', next)}
+              disabled={disabled}
+              ariaPrefix="AR reading"
+              columns={AR_COLUMNS}
+              showDoctor={false}
+              notesLabel="Notes"
+              notesPlaceholder="e.g. Repeated three times, readings consistent"
             />
           </CardBody>
         )}
@@ -171,11 +273,11 @@ export function VisitFormFields({ value, errors, disabled, onChange }: VisitForm
 
       <Card>
         <CardHeader
-          title="New prescription"
-          description="The result of today's eye test. Saved with this visit, so earlier ones are kept."
+          title="Prescribed power"
+          description="The final power the lens will be made to. Saved with this visit, so earlier ones are kept."
           actions={
             <SectionToggle
-              label="Record new prescription"
+              label="Record prescribed power"
               checked={value.includePrescription}
               disabled={disabled}
               onChange={(checked) => set('includePrescription', checked)}
@@ -184,30 +286,35 @@ export function VisitFormFields({ value, errors, disabled, onChange }: VisitForm
         />
         {value.includePrescription && (
           <CardBody className="space-y-4">
-            {value.includeExistingPrescription && !isPrescriptionEmpty(value.existingPrescription) && (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={disabled}
-                onClick={() =>
-                  set('prescription', {
-                    ...value.existingPrescription,
-                    rightEye: { ...value.existingPrescription.rightEye },
-                    leftEye: { ...value.existingPrescription.leftEye },
-                    // A new test has its own doctor and notes.
-                    doctor: value.prescription.doctor,
-                    notes: value.prescription.notes,
-                  })
-                }
-              >
-                Start from existing values
-              </Button>
+            {(canCopyAr || canCopyOldGlasses) && (
+              <div className="flex flex-wrap gap-2">
+                {canCopyAr && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => copyIntoPrescribed(value.arReading)}
+                  >
+                    Copy AR reading
+                  </Button>
+                )}
+                {canCopyOldGlasses && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => copyIntoPrescribed(value.oldGlasses.prescription)}
+                  >
+                    Copy old glasses power
+                  </Button>
+                )}
+              </div>
             )}
             <PrescriptionFields
               value={value.prescription}
               onChange={(next) => set('prescription', next)}
               disabled={disabled}
-              ariaPrefix="New"
+              ariaPrefix="Prescribed"
             />
           </CardBody>
         )}

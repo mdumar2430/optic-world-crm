@@ -5,8 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useUserNames } from '@/hooks/useUserNames';
 import { messageFromError } from '@/hooks/useAsync';
-import { VISIT_TYPE_LABELS } from '@/constants/labels';
-import { Badge, Button, ButtonLink } from '@/components/ui';
+import { LENS_TYPE_LABELS, VISIT_TYPE_LABELS } from '@/constants/labels';
+import { Badge, Button, ButtonLink, DetailItem } from '@/components/ui';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { ServiceCard } from '@/components/services/ServiceCard';
 import { formatDate, formatDateTime, summariseVisitActivities } from '@/utils/format';
@@ -127,12 +127,42 @@ export function VisitTimeline({ customerId, visits, onVisitUpdated }: VisitTimel
 
             {!isCollapsed && (
               <div id={`visit-body-${visit.id}`} className="space-y-5 px-4 py-4 sm:px-5">
-                {visit.existingPrescription && (
+                {visit.oldGlasses && (
                   <section>
                     <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Existing prescription
+                      Old glasses
                     </h4>
-                    <PrescriptionView prescription={visit.existingPrescription} />
+                    <div className="space-y-3">
+                      <PrescriptionView prescription={visit.oldGlasses.prescription} />
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                        <DetailItem
+                          label="Lens type"
+                          value={
+                            visit.oldGlasses.lensType
+                              ? LENS_TYPE_LABELS[visit.oldGlasses.lensType]
+                              : ''
+                          }
+                        />
+                        <DetailItem label="Lens brand" value={visit.oldGlasses.lensCompany} />
+                        <DetailItem label="Lens name" value={visit.oldGlasses.lensName} />
+                        {visit.oldGlasses.lensDetails && (
+                          <DetailItem
+                            label="Lens details"
+                            className="col-span-2 sm:col-span-3"
+                            value={visit.oldGlasses.lensDetails}
+                          />
+                        )}
+                      </dl>
+                    </div>
+                  </section>
+                )}
+
+                {visit.arReading && (
+                  <section>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      AR machine reading
+                    </h4>
+                    <PrescriptionView prescription={visit.arReading} />
                   </section>
                 )}
 
@@ -140,21 +170,21 @@ export function VisitTimeline({ customerId, visits, onVisitUpdated }: VisitTimel
                   <section>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        New prescription
+                        Prescribed power
                       </h4>
-                      {visit.existingPrescription && (
+                      {visit.oldGlasses && (
                         <span className="flex items-center gap-1.5 text-xs text-slate-500">
                           <span
                             className="h-3 w-3 rounded-sm bg-amber-50 ring-1 ring-inset ring-amber-200"
                             aria-hidden="true"
                           />
-                          Changed from existing
+                          Changed from old glasses
                         </span>
                       )}
                     </div>
                     <PrescriptionView
                       prescription={visit.prescription}
-                      compareWith={visit.existingPrescription}
+                      compareWith={visit.oldGlasses?.prescription ?? null}
                     />
                   </section>
                 )}
@@ -211,7 +241,8 @@ export function VisitTimeline({ customerId, visits, onVisitUpdated }: VisitTimel
                 )}
 
                 {!visit.prescription &&
-                  !visit.existingPrescription &&
+                  !visit.oldGlasses &&
+                  !visit.arReading &&
                   visit.orders.length === 0 &&
                   visit.services.length === 0 &&
                   !visit.notes && (

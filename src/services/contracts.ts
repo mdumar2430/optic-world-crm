@@ -13,6 +13,7 @@ import type {
   DashboardSummary,
   Gender,
   Address,
+  OldGlasses,
   OrderStatus,
   Prescription,
   ProductOrder,
@@ -66,7 +67,8 @@ export interface VisitInput {
   visitDate: Date;
   visitType: VisitType;
   notes: string;
-  existingPrescription: Prescription | null;
+  oldGlasses: OldGlasses | null;
+  arReading: Prescription | null;
   prescription: Prescription | null;
   orders: OrderInput[];
   services: ServiceInput[];

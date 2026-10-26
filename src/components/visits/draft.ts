@@ -7,6 +7,8 @@
  */
 import type {
   FrameCategory,
+  LensType,
+  OldGlasses,
   OrderStatus,
   OrderType,
   PaymentStatus,
@@ -39,6 +41,14 @@ export interface PrescriptionDraft {
   binocularPd: string;
   doctor: string;
   notes: string;
+}
+
+export interface OldGlassesDraft {
+  prescription: PrescriptionDraft;
+  lensType: LensType | '';
+  lensCompany: string;
+  lensName: string;
+  lensDetails: string;
 }
 
 export interface OrderDraft {
@@ -77,15 +87,18 @@ export interface VisitDraft {
   visitDate: string;
   visitType: VisitType;
   notes: string;
-  /** What the customer came in wearing, recorded before testing. */
-  includeExistingPrescription: boolean;
-  existingPrescription: PrescriptionDraft;
+  /** 1. The glasses the customer came in wearing: power and lens. */
+  includeOldGlasses: boolean;
+  oldGlasses: OldGlassesDraft;
   /**
-   * Where a pre-filled existing prescription came from, e.g. "VISIT-000004 on
+   * Where pre-filled old-glasses values came from, e.g. "VISIT-000004 on
    * 25 Oct 2026". Display only — never saved.
    */
-  existingPrefilledFrom: string | null;
-  /** The result of this visit's eye test. */
+  oldGlassesPrefilledFrom: string | null;
+  /** 2. The AR machine reading. */
+  includeArReading: boolean;
+  arReading: PrescriptionDraft;
+  /** 3. Prescribed power — the final power the lens is made to. */
   includePrescription: boolean;
   prescription: PrescriptionDraft;
   orders: OrderDraft[];
@@ -121,6 +134,16 @@ function emptyEye(): EyeDraft {
 
 export function emptyPrescriptionDraft(): PrescriptionDraft {
   return { rightEye: emptyEye(), leftEye: emptyEye(), binocularPd: '', doctor: '', notes: '' };
+}
+
+export function emptyOldGlassesDraft(): OldGlassesDraft {
+  return {
+    prescription: emptyPrescriptionDraft(),
+    lensType: '',
+    lensCompany: '',
+    lensName: '',
+    lensDetails: '',
+  };
 }
 
 export function emptyOrderDraft(): OrderDraft {
@@ -160,9 +183,11 @@ export function emptyVisitDraft(): VisitDraft {
     visitDate: toDateInputValue(new Date()),
     visitType: 'consultation',
     notes: '',
-    includeExistingPrescription: false,
-    existingPrescription: emptyPrescriptionDraft(),
-    existingPrefilledFrom: null,
+    includeOldGlasses: false,
+    oldGlasses: emptyOldGlassesDraft(),
+    oldGlassesPrefilledFrom: null,
+    includeArReading: false,
+    arReading: emptyPrescriptionDraft(),
     includePrescription: false,
     prescription: emptyPrescriptionDraft(),
     orders: [],
@@ -185,6 +210,16 @@ export function prescriptionToDraft(prescription: Prescription): PrescriptionDra
     binocularPd: prescription.binocularPd,
     doctor: prescription.doctor,
     notes: prescription.notes,
+  };
+}
+
+export function oldGlassesToDraft(glasses: OldGlasses): OldGlassesDraft {
+  return {
+    prescription: prescriptionToDraft(glasses.prescription),
+    lensType: glasses.lensType ?? '',
+    lensCompany: glasses.lensCompany,
+    lensName: glasses.lensName,
+    lensDetails: glasses.lensDetails,
   };
 }
 
@@ -229,11 +264,11 @@ export function visitToDraft(visit: Visit): VisitDraft {
     visitDate: toDateInputValue(visit.visitDate),
     visitType: visit.visitType,
     notes: visit.notes,
-    includeExistingPrescription: Boolean(visit.existingPrescription),
-    existingPrescription: visit.existingPrescription
-      ? prescriptionToDraft(visit.existingPrescription)
-      : emptyPrescriptionDraft(),
-    existingPrefilledFrom: null,
+    includeOldGlasses: visit.oldGlasses !== null,
+    oldGlasses: visit.oldGlasses ? oldGlassesToDraft(visit.oldGlasses) : emptyOldGlassesDraft(),
+    oldGlassesPrefilledFrom: null,
+    includeArReading: visit.arReading !== null,
+    arReading: visit.arReading ? prescriptionToDraft(visit.arReading) : emptyPrescriptionDraft(),
     includePrescription: visit.prescription !== null,
     prescription: visit.prescription
       ? prescriptionToDraft(visit.prescription)
@@ -315,6 +350,16 @@ export function isPrescriptionEmpty(draft: PrescriptionDraft): boolean {
   );
 }
 
+export function isOldGlassesEmpty(draft: OldGlassesDraft): boolean {
+  return (
+    isPrescriptionEmpty(draft.prescription) &&
+    draft.lensType === '' &&
+    isBlank(draft.lensCompany) &&
+    isBlank(draft.lensName) &&
+    isBlank(draft.lensDetails)
+  );
+}
+
 function orderFromDraft(draft: OrderDraft): OrderInput {
   const base: OrderInput = {
     orderType: draft.orderType,
@@ -352,9 +397,7 @@ function serviceFromDraft(draft: ServiceDraft): ServiceInput {
   return base;
 }
 
-/** Null when the section is switched off or left completely blank. */
-function prescriptionFromDraft(include: boolean, draft: PrescriptionDraft): Prescription | null {
-  if (!include || isPrescriptionEmpty(draft)) return null;
+function toPrescription(draft: PrescriptionDraft): Prescription {
   return {
     rightEye: { ...draft.rightEye },
     leftEye: { ...draft.leftEye },
@@ -364,15 +407,31 @@ function prescriptionFromDraft(include: boolean, draft: PrescriptionDraft): Pres
   };
 }
 
+/** Null when the section is switched off or left completely blank. */
+function prescriptionFromDraft(include: boolean, draft: PrescriptionDraft): Prescription | null {
+  if (!include || isPrescriptionEmpty(draft)) return null;
+  return toPrescription(draft);
+}
+
+/** Lens details alone are worth keeping, even if the power couldn't be read. */
+function oldGlassesFromDraft(include: boolean, draft: OldGlassesDraft): OldGlasses | null {
+  if (!include || isOldGlassesEmpty(draft)) return null;
+  return {
+    prescription: toPrescription(draft.prescription),
+    lensType: draft.lensType === '' ? null : draft.lensType,
+    lensCompany: draft.lensCompany.trim(),
+    lensName: draft.lensName.trim(),
+    lensDetails: draft.lensDetails.trim(),
+  };
+}
+
 export function toVisitInput(draft: VisitDraft): VisitInput {
   return {
     visitDate: fromDateInputValue(draft.visitDate) ?? new Date(),
     visitType: draft.visitType,
     notes: draft.notes.trim(),
-    existingPrescription: prescriptionFromDraft(
-      draft.includeExistingPrescription,
-      draft.existingPrescription,
-    ),
+    oldGlasses: oldGlassesFromDraft(draft.includeOldGlasses, draft.oldGlasses),
+    arReading: prescriptionFromDraft(draft.includeArReading, draft.arReading),
     prescription: prescriptionFromDraft(draft.includePrescription, draft.prescription),
     orders: draft.orders.map(orderFromDraft),
     services: draft.services.map(serviceFromDraft),

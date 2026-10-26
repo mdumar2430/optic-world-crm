@@ -44,6 +44,12 @@ const RELATIONSHIP_OPTIONS = RELATIONSHIP_TYPES.map((value) => ({
 
 type Step = 'details' | 'visit';
 
+/** True when `candidate` is `primary`, or belongs to the same family group. */
+function isSameHousehold(candidate: Customer, primary: Customer): boolean {
+  const headId = primary.primaryCustomerId ?? primary.id;
+  return candidate.id === headId || candidate.primaryCustomerId === headId;
+}
+
 /**
  * Creates a customer and their first visit together.
  *
@@ -82,8 +88,23 @@ export function NewCustomerPage() {
       .getById(primaryId)
       .then((found) => {
         if (cancelled) return;
-        if (found) setPrimary(found);
-        else setPrimaryError('The primary customer could not be found.');
+        if (!found) {
+          setPrimaryError('The primary customer could not be found.');
+          return;
+        }
+        setPrimary(found);
+        // A child or elderly parent often has no phone of their own, and a
+        // household shares an address: start from the primary's, never
+        // overwriting anything already typed.
+        setCustomerDraft((current) => ({
+          ...current,
+          phone: current.phone || found.phone,
+          line1: current.line1 || found.address.line1,
+          line2: current.line2 || found.address.line2,
+          city: current.city || found.address.city,
+          state: current.state || found.address.state,
+          postalCode: current.postalCode || found.address.postalCode,
+        }));
       })
       .catch((caught: unknown) => {
         if (!cancelled) setPrimaryError(messageFromError(caught));
@@ -126,10 +147,17 @@ export function NewCustomerPage() {
     if (!duplicatesAcknowledged) {
       setCheckingDuplicates(true);
       try {
-        const matches = await customerService.findPossibleDuplicates({
+        const found = await customerService.findPossibleDuplicates({
           name: customerDraft.name,
           phone: customerDraft.phone,
         });
+        // The household's shared number is expected when adding a family
+        // member; only a name match is worth stopping for.
+        const matches = primary
+          ? found.filter(
+              (match) => !(match.reason === 'phone' && isSameHousehold(match.customer, primary)),
+            )
+          : found;
         setDuplicates(matches);
         if (matches.length > 0) {
           setCheckingDuplicates(false);
@@ -185,6 +213,10 @@ export function NewCustomerPage() {
                   </p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">{primary.name}</p>
                   <p className="font-mono text-xs text-slate-500">{primary.customerCode}</p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Phone number and address start as {primary.name}&apos;s — change them below
+                    if this family member has their own.
+                  </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Select
@@ -238,6 +270,11 @@ export function NewCustomerPage() {
             value={customerDraft}
             errors={customerErrors}
             onChange={setCustomerDraft}
+            phoneHint={
+              primary && customerDraft.phone === primary.phone
+                ? `Same as ${primary.name}'s number. Change it if they have their own.`
+                : undefined
+            }
           />
 
           <FormActions>

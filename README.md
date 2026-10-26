@@ -217,11 +217,20 @@ customers/{CUST-000001}/visits/{VISIT-000001}
 
 A visit holds its own prescriptions, orders and services, because they describe
 what happened *that day* — a prescription stored at customer level would erase
-the history the shop needs. Each visit can carry two prescriptions:
-`existingPrescription`, the power the customer came in wearing (pre-filled on a
-new visit from the latest one on record), and `prescription`, the result of
-that day's eye test. The customer page shows the latest of these, preferring a
-tested prescription. Orders and services are embedded arrays, capped at
+the history the shop needs. Each visit can record three readings, in the order
+they happen in the shop:
+
+1. `oldGlasses` — the power read from the glasses the customer is wearing, plus
+   lens type, brand, name and details. On a new visit it is pre-filled from the
+   latest prescribed power and the lens from the latest *delivered* order.
+2. `arReading` — the auto-refractor (AR machine) result: SPH, CYL, AXIS and PD.
+3. `prescription` — the prescribed power, entered by staff; the final power the
+   lens is made to. Staff can start it from the AR reading or the old glasses.
+
+The customer page shows the latest prescribed power, falling back to old
+glasses only when nothing has been prescribed. Visits saved with the earlier
+`existingPrescription` field are read as old glasses without lens details.
+Orders and services are embedded arrays, capped at
 20 each by the rules, which keeps a visit comfortably inside Firestore's 1 MB
 document limit while avoiding a read per order.
 
@@ -229,6 +238,13 @@ Family members are **independent customers**. A member stores
 `primaryCustomerId` and `relationship`; the relationship only links the records.
 Ali Khan has his own customer ID, visits, prescriptions, orders and services —
 nothing is nested under Ahmed.
+
+Many family members (children, elderly parents) have no phone of their own.
+**New family member** on a customer's page starts the new record with the
+primary customer's phone number and address, and the duplicate check ignores a
+match that is only the household's shared number. Searching that number then
+finds the whole family. New members always join the head of the household, so
+families stay one level deep.
 
 ### Performance
 

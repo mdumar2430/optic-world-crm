@@ -18,6 +18,7 @@ import {
 import {
   collection,
   collectionGroup,
+  deleteField,
   doc,
   documentId,
   getCountFromServer,
@@ -278,7 +279,8 @@ function visitToFirestore(
     visitCode: codes.visitCode,
     visitDate: Timestamp.fromDate(input.visitDate),
     visitType: input.visitType,
-    existingPrescription: input.existingPrescription,
+    oldGlasses: input.oldGlasses,
+    arReading: input.arReading,
     prescription: input.prescription,
     orders: codes.orders.map((order) =>
       orderToFirestore({ ...order, id: order.id ?? '', orderCode: order.orderCode ?? '' }),
@@ -293,6 +295,10 @@ function visitToFirestore(
   if (isCreate) {
     base.createdAt = serverTimestamp();
     base.createdBy = uid;
+  } else {
+    // Superseded by `oldGlasses`. Cleared on edit so a legacy visit ends up
+    // with one source of truth (deleteField is only valid in an update).
+    base.existingPrescription = deleteField();
   }
   return base;
 }

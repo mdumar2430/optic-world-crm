@@ -1,7 +1,8 @@
 import { GridInput, Input, Textarea } from '@/components/ui';
+import { cn } from '@/utils/cn';
 import type { EyeDraft, PrescriptionDraft } from './draft';
 
-type EyeField = keyof EyeDraft;
+export type EyeField = keyof EyeDraft;
 
 const COLUMNS: ReadonlyArray<{ field: EyeField; label: string; hint: string }> = [
   { field: 'distanceSph', label: 'SPH', hint: 'Distance sphere' },
@@ -28,6 +29,10 @@ interface PrescriptionFieldsProps {
    * one form ("Existing", "New") stay distinguishable to screen readers.
    */
   ariaPrefix?: string;
+  /** Grid columns to show, in display order. Defaults to all of them. */
+  columns?: readonly EyeField[];
+  /** Hide the doctor field, e.g. for a machine reading. */
+  showDoctor?: boolean;
   doctorLabel?: string;
   notesLabel?: string;
   notesPlaceholder?: string;
@@ -42,10 +47,16 @@ export function PrescriptionFields({
   onChange,
   disabled,
   ariaPrefix,
+  columns,
+  showDoctor = true,
   doctorLabel = 'Doctor / optometrist',
   notesLabel = 'Prescription notes',
   notesPlaceholder = 'Coating advice, wearing instructions, anything the customer was told',
 }: PrescriptionFieldsProps) {
+  const visibleColumns = columns
+    ? COLUMNS.filter((column) => columns.includes(column.field))
+    : COLUMNS;
+
   const cellLabel = (eyeLabel: string, hint: string) =>
     [ariaPrefix, eyeLabel, hint].filter(Boolean).join(' ');
 
@@ -57,13 +68,19 @@ export function PrescriptionFields({
     <div className="space-y-4">
       {/* Desktop and tablet: one row per eye. */}
       <div className="hidden overflow-x-auto sm:block">
-        <table className="w-full min-w-[640px] border-separate border-spacing-0">
+        <table
+          className={cn(
+            'w-full border-separate border-spacing-0',
+            // Eight narrow columns need room; a short reading fits as is.
+            visibleColumns.length > 4 && 'min-w-[640px]',
+          )}
+        >
           <thead>
             <tr>
               <th scope="col" className="pb-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Eye
               </th>
-              {COLUMNS.map((column) => (
+              {visibleColumns.map((column) => (
                 <th
                   key={column.field}
                   scope="col"
@@ -81,7 +98,7 @@ export function PrescriptionFields({
                 <th scope="row" className="py-1 pr-3 text-left text-sm font-medium text-slate-700">
                   {eye.label}
                 </th>
-                {COLUMNS.map((column) => (
+                {visibleColumns.map((column) => (
                   <td key={column.field} className="px-1 py-1">
                     <GridInput
                       aria-label={cellLabel(eye.label, column.hint)}
@@ -104,7 +121,7 @@ export function PrescriptionFields({
           <div key={eye.key} className="rounded-lg border border-slate-200 p-3">
             <p className="mb-2 text-sm font-medium text-slate-700">{eye.label}</p>
             <div className="grid grid-cols-4 gap-2">
-              {COLUMNS.map((column) => (
+              {visibleColumns.map((column) => (
                 <label key={column.field} className="flex flex-col gap-1">
                   <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
                     {column.label}
@@ -131,13 +148,15 @@ export function PrescriptionFields({
           disabled={disabled}
           placeholder="e.g. 64"
         />
-        <Input
-          label={doctorLabel}
-          value={value.doctor}
-          onChange={(event) => onChange({ ...value, doctor: event.target.value })}
-          disabled={disabled}
-          placeholder="e.g. Dr. Meera Krishnan"
-        />
+        {showDoctor && (
+          <Input
+            label={doctorLabel}
+            value={value.doctor}
+            onChange={(event) => onChange({ ...value, doctor: event.target.value })}
+            disabled={disabled}
+            placeholder="e.g. Dr. Meera Krishnan"
+          />
+        )}
       </div>
 
       <Textarea

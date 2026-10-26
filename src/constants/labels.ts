@@ -3,6 +3,7 @@ import type {
   CustomerType,
   FrameCategory,
   Gender,
+  LensType,
   OrderStatus,
   OrderType,
   PaymentStatus,
@@ -79,6 +80,14 @@ export const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   sunglasses: 'Sunglasses',
   contact_lens: 'Contact lens',
   accessory: 'Accessory',
+  other: 'Other',
+};
+
+export const LENS_TYPE_LABELS: Record<LensType, string> = {
+  single_vision: 'Single vision',
+  bifocal: 'Bifocal',
+  progressive: 'Progressive',
+  reading: 'Reading only',
   other: 'Other',
 };
 

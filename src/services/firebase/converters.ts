@@ -5,13 +5,16 @@
  * only ever deals with `Date`.
  */
 import { Timestamp, type DocumentData, type QueryDocumentSnapshot } from 'firebase/firestore';
-import type {
-  Customer,
-  Prescription,
-  ProductOrder,
-  ServiceJob,
-  UserProfile,
-  Visit,
+import {
+  LENS_TYPES,
+  type Customer,
+  type LensType,
+  type OldGlasses,
+  type Prescription,
+  type ProductOrder,
+  type ServiceJob,
+  type UserProfile,
+  type Visit,
 } from '@/types';
 
 type Doc = QueryDocumentSnapshot<DocumentData>;
@@ -177,6 +180,29 @@ function prescriptionFromData(value: unknown): Prescription | null {
   };
 }
 
+function oldGlassesFromData(data: DocumentData): OldGlasses | null {
+  // Visits saved before lens details existed stored only the power, as
+  // `existingPrescription`; read them as old glasses with no lens info.
+  if (!data.oldGlasses || typeof data.oldGlasses !== 'object') {
+    const legacy = prescriptionFromData(data.existingPrescription);
+    return legacy
+      ? { prescription: legacy, lensType: null, lensCompany: '', lensName: '', lensDetails: '' }
+      : null;
+  }
+  const source = data.oldGlasses as Record<string, unknown>;
+  const prescription = prescriptionFromData(source.prescription);
+  if (!prescription) return null;
+  return {
+    prescription,
+    lensType: (LENS_TYPES as readonly string[]).includes(source.lensType as string)
+      ? (source.lensType as LensType)
+      : null,
+    lensCompany: str(source.lensCompany),
+    lensName: str(source.lensName),
+    lensDetails: str(source.lensDetails),
+  };
+}
+
 export function visitFromDoc(snapshot: Doc, customerId: string): Visit {
   const data = snapshot.data();
   const created = toDateOr(data.createdAt, new Date());
@@ -186,7 +212,8 @@ export function visitFromDoc(snapshot: Doc, customerId: string): Visit {
     customerId,
     visitDate: toDateOr(data.visitDate, created),
     visitType: (data.visitType ?? 'other') as Visit['visitType'],
-    existingPrescription: prescriptionFromData(data.existingPrescription),
+    oldGlasses: oldGlassesFromData(data),
+    arReading: prescriptionFromData(data.arReading),
     prescription: prescriptionFromData(data.prescription),
     orders: Array.isArray(data.orders) ? data.orders.map(orderFromData) : [],
     services: Array.isArray(data.services) ? data.services.map(serviceFromData) : [],

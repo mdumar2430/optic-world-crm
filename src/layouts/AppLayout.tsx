@@ -99,6 +99,11 @@ export function AppLayout() {
   // Close the mobile menu whenever navigation happens.
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
+  // BrowserRouter keeps the old scroll position; a new page should open at its top.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   useEffect(() => {
     if (!menuOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {

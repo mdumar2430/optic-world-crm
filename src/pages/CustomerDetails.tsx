@@ -61,8 +61,8 @@ function PhoneLink({ phone }: { phone: string }) {
 }
 
 /**
- * The power staff need first when a customer walks in: the newest tested
- * prescription, or — if none was tested here — what they reported wearing.
+ * The power staff need first when a customer walks in: the newest prescribed
+ * power, or — if nothing has been prescribed here — their old glasses.
  */
 function LatestPrescriptionCard({ visits }: { visits: Visit[] }) {
   const latest = findLatestPrescription(visits);
@@ -73,8 +73,8 @@ function LatestPrescriptionCard({ visits }: { visits: Visit[] }) {
         <CardHeader title="Latest prescription" />
         <CardBody>
           <p className="text-sm text-slate-500">
-            No prescription recorded yet. Add one — existing or newly tested — when you record a
-            visit.
+            No prescription recorded yet. Add the old glasses power, AR reading and prescribed
+            power when you record a visit.
           </p>
         </CardBody>
       </Card>
@@ -87,15 +87,15 @@ function LatestPrescriptionCard({ visits }: { visits: Visit[] }) {
       <CardHeader
         title="Latest prescription"
         description={
-          source === 'tested'
-            ? `Tested on ${formatDate(visit.visitDate)} · ${visit.visitCode}`
-            : `Noted on ${formatDate(visit.visitDate)} · ${visit.visitCode} — no eye test recorded since`
+          source === 'prescribed'
+            ? `Prescribed on ${formatDate(visit.visitDate)} · ${visit.visitCode}`
+            : `Read from old glasses on ${formatDate(visit.visitDate)} · ${visit.visitCode} — nothing prescribed since`
         }
         actions={
-          source === 'tested' ? (
-            <Badge tone="success">Tested here</Badge>
+          source === 'prescribed' ? (
+            <Badge tone="success">Prescribed power</Badge>
           ) : (
-            <Badge tone="warning">Customer&apos;s existing</Badge>
+            <Badge tone="warning">Old glasses</Badge>
           )
         }
       />
@@ -386,14 +386,23 @@ export function CustomerDetailsPage() {
               className="xl:flex-col xl:items-start"
               actions={
                 can('relationships:manage') ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={PlusIcon}
-                    onClick={() => setFamilyModalOpen(true)}
-                  >
-                    Add family member
-                  </Button>
+                  <>
+                    {can('customers:create') && (
+                      // Families stay one level deep, so new members always
+                      // join the head of the household.
+                      <ButtonLink
+                        to={`/customers/new?primaryId=${record.primaryCustomerId ?? record.id}`}
+                        variant="secondary"
+                        size="sm"
+                        icon={PlusIcon}
+                      >
+                        New family member
+                      </ButtonLink>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => setFamilyModalOpen(true)}>
+                      Link existing
+                    </Button>
+                  </>
                 ) : null
               }
             />
